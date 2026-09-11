@@ -18,7 +18,7 @@
     background: radial-gradient(circle at 50% -10%, #3b2f8f 0%, #1e1b4b 35%, var(--fondo) 75%);
     background-attachment: fixed;
   }
-  main { max-width: 640px; margin: 0 auto; padding: 28px 16px 60px; }
+  main { max-width: 700px; margin: 0 auto; padding: 28px 16px 60px; }
   h1 { font-size: 1.8rem; margin: 0 0 6px; }
   h2 { font-size: 1.2rem; margin: 30px 0 10px; color: var(--acento); }
   p { line-height: 1.5; color: var(--suave); }
@@ -42,12 +42,14 @@
   }
   .boton:disabled { opacity: .55; cursor: default; }
   .boton.secundario { background: transparent; border: 1.5px solid var(--borde); box-shadow: none; color: var(--suave); font-size: .95rem; padding: 8px 16px; margin: 8px 8px 0 0; }
+  .boton.mini { font-size: .85rem; padding: 5px 12px; margin: 0; }
   .error { color: #fda4af; min-height: 1.4em; }
+  .tabla-scroll { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; background: var(--tarjeta); border-radius: 14px; overflow: hidden; }
-  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--borde); }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--borde); vertical-align: middle; }
   th { color: var(--acento); font-weight: 600; }
   td.pin { font-family: ui-monospace, Consolas, monospace; font-size: 1.15rem; letter-spacing: 3px; }
-  td.fecha { color: var(--suave); font-size: .9rem; }
+  td small { display: block; color: var(--suave); font-size: .82rem; }
   .enlace {
     display: flex; gap: 8px; align-items: center; background: rgba(0,0,0,.3); border-radius: 12px; padding: 10px 12px;
     font-family: ui-monospace, Consolas, monospace; font-size: .9rem; word-break: break-all;
@@ -55,7 +57,6 @@
   .enlace span { flex: 1; }
   .enlace button { margin: 0; white-space: nowrap; }
   .aviso { background: rgba(255,209,102,.12); border: 1.5px solid rgba(255,209,102,.4); border-radius: 12px; padding: 12px 14px; }
-  .ok { color: #86efac; }
   .progreso { font-size: 1.1rem; font-weight: 600; margin: 0 0 12px; color: var(--texto); }
   .listo { color: #86efac; font-weight: 600; }
   .pendiente { color: var(--suave); }
@@ -81,7 +82,7 @@
 
       <div class="fila">
         <div>
-          <label for="largo">Largo del PIN</label>
+          <label for="largo">Largo del PIN de invitación</label>
           <select id="largo">
             <option value="4">4 dígitos</option>
             <option value="6" selected>6 dígitos</option>
@@ -102,19 +103,29 @@
     <h2>1. Enlace del juego (compártelo con todos)</h2>
     <div class="enlace"><span id="enlace-juego"></span><button class="boton secundario" type="button" id="copiar-juego">Copiar</button></div>
 
-    <h2>2. PIN de cada persona (envíalos en privado)</h2>
+    <h2>2. PIN de invitación de cada persona (envíalos en privado)</h2>
     <p id="sin-pines" hidden>Los PIN solo se muestran en el navegador donde se creó el juego. Si los perdiste, crea un juego nuevo.</p>
-    <table id="tabla-pines"><thead><tr><th>Nombre</th><th>PIN</th></tr></thead><tbody></tbody></table>
+    <div class="tabla-scroll">
+      <table id="tabla-pines"><thead><tr><th>Nombre</th><th>PIN</th></tr></thead><tbody></tbody></table>
+    </div>
     <button class="boton secundario" type="button" id="copiar-pines">Copiar lista de PIN</button>
-    <span class="ok" id="ok-pines"></span>
+    <p>Cada persona puede cambiar ese PIN por uno personal al entrar. Si lo hace, el de invitación deja de funcionar.</p>
 
-    <h2>3. ¿Quién ya giró?</h2>
+    <h2>3. Estado</h2>
     <p class="progreso" id="progreso"></p>
-    <table id="tabla-estado"><thead><tr><th>Nombre</th><th>Estado</th><th>Cuándo</th></tr></thead><tbody></tbody></table>
-    <p>Se actualiza solo, sin recargar la página.</p>
+    <div class="tabla-scroll">
+      <table id="tabla-estado">
+        <thead><tr><th>Nombre</th><th>Ruleta</th><th>PIN</th><th id="th-reiniciar"></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p id="nota-reinicio">Si alguien olvida su PIN personal, pulsa <b>Reiniciar</b>: vuelve a valer su PIN de invitación
+       y la persona podrá crear uno nuevo. Ella verá la fecha del reinicio.</p>
+    <p id="sin-clave" class="aviso" hidden>Para poder reiniciar PIN abre este panel desde tu <b>enlace de organizador</b> (el que incluye la clave).</p>
+    <p class="error" id="error-estado"></p>
 
     <h2>Tu enlace de organizador</h2>
-    <p>Guárdalo para volver a este panel:</p>
+    <p>Guárdalo y no lo compartas: incluye la clave que permite reiniciar PIN.</p>
     <div class="enlace"><span id="enlace-admin"></span><button class="boton secundario" type="button" id="copiar-admin">Copiar</button></div>
     <p class="aviso">⚠️ Guarda los PIN ahora: no quedan en la nube y no se pueden recuperar después.</p>
   </section>
@@ -131,6 +142,7 @@ const db = getFirestore(initializeApp(window.FIREBASE_CONFIG));
 const $ = (s) => document.querySelector(s);
 const ordenar = (lista) => [...lista].sort((a, b) => a.localeCompare(b, 'es'));
 const claveLocal = (id) => 'amigo-secreto-admin:' + id;
+const fechaBonita = (ts) => ts && ts.toDate ? ts.toDate().toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' }) : '';
 
 // ============ Modo crear ============
 function leerNombres() {
@@ -180,6 +192,7 @@ $('#form').addEventListener('submit', async (e) => {
   try {
     const largo = Number($('#largo').value);
     const id = AS.idAleatorio(8);
+    const claveAdmin = AS.hexAleatorio(16); // va en el enlace de organizador; permite reiniciar PIN
     const nombreEvento = $('#evento').value.trim() || 'Amigo Secreto';
     const ordenados = ordenar(nombres);
     const amigoDe = sortear(nombres);
@@ -194,23 +207,32 @@ $('#form').addEventListener('submit', async (e) => {
       pines[n] = p;
     }
 
-    // Todo se guarda en una sola operación: el evento, las asignaciones cifradas y las huellas.
+    // Todo se guarda en una sola operación: el evento, las asignaciones cifradas y el control de cada persona.
     const lote = writeBatch(db);
-    lote.set(doc(db, 'eventos', id), { nombre: nombreEvento, creado: serverTimestamp(), participantes: ordenados });
+    lote.set(doc(db, 'eventos', id), {
+      nombre: nombreEvento,
+      creado: serverTimestamp(),
+      participantes: ordenados,
+      huellaAdmin: await AS.sha256hex(claveAdmin),
+    });
     for (const n of ordenados) {
-      const nonce = AS.hexAleatorio(16);
+      const nonceGiro = AS.hexAleatorio(16);   // para marcar "ya giró"
+      const nonceCambio = AS.hexAleatorio(16); // para cambiar el PIN
       const { token, clave } = await AS.derivar(pines[n], AS.salt(id, n));
-      const cifrado = await AS.cifrar(JSON.stringify({ amigo: amigoDe.get(n), nonce }), clave);
-      lote.set(doc(db, 'eventos', id, 'asignaciones', token), { nombre: n, ...cifrado });
-      lote.set(doc(db, 'eventos', id, 'huellas', n), { huella: await AS.sha256hex(nonce) });
+      const cifrado = await AS.cifrar(JSON.stringify({ amigo: amigoDe.get(n), nonceGiro, nonceCambio }), clave);
+      lote.set(doc(db, 'eventos', id, 'asignaciones', token), { nombre: n, tipo: 'invitacion', ...cifrado });
+      lote.set(doc(db, 'eventos', id, 'control', n), {
+        activo: 'invitacion',
+        huellaGiro: await AS.sha256hex(nonceGiro),
+        huellaCambio: await AS.sha256hex(nonceCambio),
+      });
     }
     await AS.conTiempo(lote.commit(), 20000);
 
-    // Los PIN solo quedan en este navegador (nunca en la nube)
-    try { localStorage.setItem(claveLocal(id), JSON.stringify(pines)); } catch {}
+    // Los PIN y la clave solo quedan en este navegador (nunca en la nube)
+    try { localStorage.setItem(claveLocal(id), JSON.stringify({ pines, clave: claveAdmin })); } catch {}
 
-    location.hash = 'e=' + id;
-    mostrarEstado(id);
+    location.hash = 'e=' + id + '&k=' + claveAdmin;
   } catch (err) {
     error.textContent = err.message === 'sin-conexion' ? AS.MENSAJE_SIN_CONEXION
       : err.code === 'permission-denied' ? 'La base de datos rechazó la escritura. Revisa que las reglas de Firestore estén publicadas.'
@@ -222,10 +244,11 @@ $('#form').addEventListener('submit', async (e) => {
 });
 
 // ============ Modo estado ============
-let detener = null;
+let detener = [];
 
-async function mostrarEstado(id) {
-  if (detener) detener();
+async function mostrarEstado(id, claveAdmin) {
+  detener.forEach((d) => d());
+  detener = [];
   $('#crear').hidden = true;
   $('#estado').hidden = false;
 
@@ -244,16 +267,20 @@ async function mostrarEstado(id) {
   const participantes = ordenar(evento.participantes);
   $('#titulo-evento').textContent = evento.nombre;
 
+  // Datos guardados en este navegador al crear el juego (PIN y clave)
+  let local = {};
+  try { local = JSON.parse(localStorage.getItem(claveLocal(id))) || {}; } catch {}
+  const pines = local.pines || null;
+  claveAdmin = claveAdmin || local.clave || '';
+
   const enlaceJuego = AS.urlBase() + '#e=' + id;
-  const enlaceAdmin = AS.urlBase() + 'admin.html#e=' + id;
+  const enlaceAdmin = AS.urlBase() + 'admin.html#e=' + id + (claveAdmin ? '&k=' + claveAdmin : '');
   $('#enlace-juego').textContent = enlaceJuego;
   $('#enlace-admin').textContent = enlaceAdmin;
   $('#copiar-juego').onclick = () => copiar(enlaceJuego, $('#copiar-juego'));
   $('#copiar-admin').onclick = () => copiar(enlaceAdmin, $('#copiar-admin'));
 
-  // PIN (solo si se crearon en este navegador)
-  let pines = null;
-  try { pines = JSON.parse(localStorage.getItem(claveLocal(id))); } catch {}
+  // PIN de invitación (solo si se crearon en este navegador)
   const cuerpoPines = $('#tabla-pines tbody');
   cuerpoPines.innerHTML = '';
   if (pines) {
@@ -271,26 +298,72 @@ async function mostrarEstado(id) {
   $('#tabla-pines').hidden = !pines;
   $('#copiar-pines').hidden = !pines;
 
-  // Estado en vivo
+  // Estado en vivo: giros + estado de PIN
+  $('#sin-clave').hidden = !!claveAdmin;
+  $('#nota-reinicio').hidden = !claveAdmin;
+  $('#th-reiniciar').textContent = claveAdmin ? 'Reiniciar PIN' : '';
   const cuerpoEstado = $('#tabla-estado tbody');
-  detener = onSnapshot(collection(db, 'eventos', id, 'estado'), (res) => {
-    const giros = {};
-    res.forEach((d) => { giros[d.id] = d.data(); });
+  let giros = {};
+  let estadoPines = {};
+
+  function pintar() {
     cuerpoEstado.innerHTML = '';
     let listos = 0;
     for (const n of participantes) {
       const g = giros[n];
+      const p = estadoPines[n] || {};
       if (g) listos++;
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td></td><td></td><td class="fecha"></td>';
+      tr.innerHTML = '<td></td><td></td><td></td><td></td>';
       tr.children[0].textContent = n;
       tr.children[1].textContent = g ? '✅ Ya giró' : '⏳ Pendiente';
       tr.children[1].className = g ? 'listo' : 'pendiente';
-      tr.children[2].textContent = g && g.fecha ? g.fecha.toDate().toLocaleString('es') : '';
+      if (g && g.fecha) tr.children[1].insertAdjacentHTML('beforeend', '<small></small>'), tr.children[1].lastChild.textContent = fechaBonita(g.fecha);
+      tr.children[2].textContent = p.personal ? '🔒 Personal' : '✉️ De invitación';
+      if (p.personal && p.cambiado) tr.children[2].insertAdjacentHTML('beforeend', '<small></small>'), tr.children[2].lastChild.textContent = 'cambiado ' + fechaBonita(p.cambiado);
+      if (!p.personal && p.reiniciado) tr.children[2].insertAdjacentHTML('beforeend', '<small></small>'), tr.children[2].lastChild.textContent = 'reiniciado ' + fechaBonita(p.reiniciado);
+      if (claveAdmin) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'boton secundario mini';
+        b.textContent = '🔄 Reiniciar';
+        b.disabled = !p.personal;
+        b.title = p.personal ? 'Vuelve a valer el PIN de invitación' : 'Ya está con el PIN de invitación';
+        b.onclick = () => reiniciarPin(id, n, claveAdmin, b);
+        tr.children[3].appendChild(b);
+      }
       cuerpoEstado.appendChild(tr);
     }
     $('#progreso').textContent = listos + ' de ' + participantes.length + ' ya giraron' + (listos === participantes.length ? ' 🎉' : '');
-  });
+  }
+
+  detener.push(onSnapshot(collection(db, 'eventos', id, 'estado'), (res) => {
+    giros = {};
+    res.forEach((d) => { giros[d.id] = d.data(); });
+    pintar();
+  }));
+  detener.push(onSnapshot(collection(db, 'eventos', id, 'pines'), (res) => {
+    estadoPines = {};
+    res.forEach((d) => { estadoPines[d.id] = d.data(); });
+    pintar();
+  }));
+}
+
+async function reiniciarPin(id, nombre, claveAdmin, boton) {
+  if (!confirm('¿Reiniciar el PIN de ' + nombre + '?\n\nSu PIN personal dejará de funcionar y volverá a valer el de invitación. ' + nombre + ' verá la fecha del reinicio.')) return;
+  boton.disabled = true;
+  $('#error-estado').textContent = '';
+  try {
+    const lote = writeBatch(db);
+    lote.update(doc(db, 'eventos', id, 'control', nombre), { activo: 'invitacion', reiniciado: serverTimestamp(), pruebaAdmin: claveAdmin });
+    lote.set(doc(db, 'eventos', id, 'pines', nombre), { personal: false, reiniciado: serverTimestamp() });
+    await AS.conTiempo(lote.commit(), 20000);
+  } catch (err) {
+    $('#error-estado').textContent = err.code === 'permission-denied'
+      ? 'No se pudo reiniciar: la clave del enlace de organizador no es válida.'
+      : 'No se pudo reiniciar: ' + err.message;
+    boton.disabled = false;
+  }
 }
 
 async function copiar(texto, boton) {
@@ -304,12 +377,14 @@ async function copiar(texto, boton) {
 }
 
 // ============ Arranque ============
-const id = new URLSearchParams(location.hash.slice(1)).get('e');
-if (id) mostrarEstado(id);
-window.addEventListener('hashchange', () => {
-  const nuevo = new URLSearchParams(location.hash.slice(1)).get('e');
-  if (nuevo) mostrarEstado(nuevo); else location.reload();
-});
+function arrancar() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const id = params.get('e');
+  if (id) mostrarEstado(id, params.get('k') || '');
+  else location.reload();
+}
+if (location.hash.includes('e=')) arrancar();
+window.addEventListener('hashchange', arrancar);
 </script>
 </body>
 </html>

@@ -2,37 +2,92 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Un evento (juego). Solo se puede leer si conoces su id (no se pueden listar).
     match /eventos/{evento} {
+
+      function control(nombre) {
+        return get(/databases/$(database)/documents/eventos/$(evento)/control/$(nombre)).data;
+      }
+      function controlDespues(nombre) {
+        return getAfter(/databases/$(database)/documents/eventos/$(evento)/control/$(nombre)).data;
+      }
+      function hash(texto) {
+        return hashing.sha256(texto).toHexString().lower();
+      }
+
+      // Un evento (juego). Solo se puede leer si conoces su id (no se pueden listar).
       allow get: if true;
       allow list: if false;
-      allow create: if request.resource.data.keys().hasOnly(['nombre', 'creado', 'participantes'])
+      allow create: if request.resource.data.keys().hasOnly(['nombre', 'creado', 'participantes', 'huellaAdmin'])
                     && request.resource.data.nombre is string
                     && request.resource.data.nombre.size() <= 60
                     && request.resource.data.creado == request.time
                     && request.resource.data.participantes is list
                     && request.resource.data.participantes.size() >= 3
-                    && request.resource.data.participantes.size() <= 200;
+                    && request.resource.data.participantes.size() <= 200
+                    && request.resource.data.huellaAdmin is string;
       allow update, delete: if false;
 
-      // Asignación cifrada de cada persona. El id del documento se deriva del PIN,
-      // así que sin el PIN no se puede ni pedir. Nunca se pueden listar.
+      // Asignación cifrada. El id del documento se deriva del PIN, así que sin el PIN
+      // no se puede ni pedir. Solo se puede leer la que esté vigente: la de invitación
+      // mientras la persona no haya creado su PIN personal, o la personal actual.
       match /asignaciones/{token} {
-        allow get: if true;
+        allow get: if resource == null
+                   || (resource.data.tipo == 'invitacion'
+                       && control(resource.data.nombre).activo == 'invitacion')
+                   || (resource.data.tipo == 'personal'
+                       && control(resource.data.nombre).activo == 'personal'
+                       && control(resource.data.nombre).tokenPersonal == token);
         allow list: if false;
-        allow create: if request.resource.data.keys().hasOnly(['nombre', 'iv', 'data'])
+        allow create: if request.resource.data.keys().hasOnly(['nombre', 'tipo', 'iv', 'data'])
                       && request.resource.data.nombre is string
+                      && request.resource.data.tipo in ['invitacion', 'personal']
                       && request.resource.data.iv is string
                       && request.resource.data.data is string;
         allow update, delete: if false;
       }
 
-      // Huella (hash) del secreto de cada persona. Solo la usan estas reglas.
-      match /huellas/{nombre} {
+      // Control privado de cada persona: qué PIN está vigente y las huellas de sus secretos.
+      // Nadie lo puede leer; solo lo usan estas reglas.
+      match /control/{nombre} {
         allow read: if false;
-        allow create: if request.resource.data.keys().hasOnly(['huella'])
-                      && request.resource.data.huella is string;
-        allow update, delete: if false;
+        allow create: if request.resource.data.keys().hasOnly(['activo', 'huellaGiro', 'huellaCambio'])
+                      && request.resource.data.activo == 'invitacion'
+                      && request.resource.data.huellaGiro is string
+                      && request.resource.data.huellaCambio is string;
+        // La persona crea/cambia su PIN: presenta el secreto que viaja cifrado con su PIN
+        // y en la misma operación crea su nueva asignación cifrada.
+        allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['activo', 'tokenPersonal', 'prueba', 'cambiado'])
+                      && request.resource.data.activo == 'personal'
+                      && request.resource.data.tokenPersonal is string
+                      && request.resource.data.cambiado == request.time
+                      && hash(request.resource.data.prueba) == resource.data.huellaCambio
+                      && getAfter(/databases/$(database)/documents/eventos/$(evento)/asignaciones/$(request.resource.data.tokenPersonal)).data.nombre == nombre
+                      && getAfter(/databases/$(database)/documents/eventos/$(evento)/asignaciones/$(request.resource.data.tokenPersonal)).data.tipo == 'personal';
+        // El organizador reinicia el PIN: presenta la clave de su enlace de organizador.
+        // Vuelve a valer el código de invitación y queda registrada la fecha.
+        allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['activo', 'reiniciado', 'pruebaAdmin'])
+                      && request.resource.data.activo == 'invitacion'
+                      && request.resource.data.reiniciado == request.time
+                      && hash(request.resource.data.pruebaAdmin)
+                         == get(/databases/$(database)/documents/eventos/$(evento)).data.huellaAdmin;
+        allow delete: if false;
+      }
+
+      // Estado público del PIN de cada persona (¿ya creó uno personal? ¿fue reiniciado?).
+      // Solo se puede escribir en la misma operación que un cambio o reinicio válido.
+      match /pines/{nombre} {
+        allow read: if true;
+        allow create, update: if (request.resource.data.keys().hasOnly(['personal', 'cambiado'])
+                                  && request.resource.data.personal == true
+                                  && request.resource.data.cambiado == request.time
+                                  && controlDespues(nombre).cambiado == request.time)
+                              || (request.resource.data.keys().hasOnly(['personal', 'reiniciado'])
+                                  && request.resource.data.personal == false
+                                  && request.resource.data.reiniciado == request.time
+                                  && controlDespues(nombre).reiniciado == request.time);
+        allow delete: if false;
       }
 
       // "Ya giró". Cualquiera puede verlo (el organizador lo usa para el estado),
@@ -43,8 +98,7 @@ service cloud.firestore {
                       && request.resource.data.giro == true
                       && request.resource.data.fecha == request.time
                       && request.resource.data.prueba is string
-                      && hashing.sha256(request.resource.data.prueba).toHexString().lower()
-                         == get(/databases/$(database)/documents/eventos/$(evento)/huellas/$(nombre)).data.huella;
+                      && hash(request.resource.data.prueba) == control(nombre).huellaGiro;
         allow update, delete: if false;
       }
     }

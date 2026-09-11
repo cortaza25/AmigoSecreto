@@ -42,18 +42,18 @@
   .chip:hover { transform: translateY(-2px); background: rgba(255,255,255,0.14); }
   .chip.activo { background: var(--acento); color: #1e1b4b; border-color: var(--acento); }
 
-  /* ---- Formulario PIN ---- */
+  /* ---- Formularios de PIN ---- */
   form { display: flex; flex-direction: column; align-items: center; gap: 12px; }
   label { color: var(--suave); font-size: .95rem; }
-  input#pin {
-    font: inherit; font-size: 1.8rem; letter-spacing: 12px; text-align: center; width: 200px;
+  input.pin {
+    font: inherit; font-size: 1.8rem; letter-spacing: 12px; text-align: center; width: 220px;
     padding: 10px 0 10px 12px; border-radius: 14px; border: 2px solid var(--borde);
     background: rgba(0,0,0,0.25); color: var(--texto); outline: none;
   }
-  input#pin:focus { border-color: var(--acento); }
+  input.pin:focus { border-color: var(--acento); }
   .sacudir { animation: sacudir .4s ease; }
   @keyframes sacudir { 20%,60% { transform: translateX(-8px); } 40%,80% { transform: translateX(8px); } }
-  .error { color: #fda4af; min-height: 1.4em; margin: 0; font-size: .95rem; text-align: center; }
+  .error { color: #fda4af; min-height: 1.4em; margin: 0; font-size: .95rem; text-align: center; line-height: 1.4; }
 
   /* ---- Botones ---- */
   .boton {
@@ -69,6 +69,11 @@
     background: transparent; color: var(--suave); box-shadow: none;
     border: 1.5px solid var(--borde); font-size: .95rem; padding: 8px 16px; font-weight: 600;
   }
+  .enlace-boton {
+    font: inherit; background: none; border: none; color: var(--suave); cursor: pointer;
+    text-decoration: underline; text-underline-offset: 3px; font-size: .95rem; padding: 6px;
+  }
+  .enlace-boton:hover { color: var(--acento); }
 
   /* ---- Pantalla de la ruleta ---- */
   .cabecera { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
@@ -90,8 +95,9 @@
     font-size: 30px; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.35);
   }
   .acciones { text-align: center; }
+  .pie { text-align: center; margin-top: 22px; }
 
-  /* ---- Tarjeta de resultado ---- */
+  /* ---- Tarjetas ---- */
   .tarjeta {
     margin-top: 22px; padding: 22px 20px; border-radius: 20px; text-align: center;
     background: #fff; color: #1e1b4b; box-shadow: 0 16px 40px rgba(0,0,0,.4);
@@ -101,8 +107,18 @@
   .tarjeta p { margin: 0; }
   .tarjeta .titulo { text-transform: uppercase; letter-spacing: 2px; font-size: .8rem; color: #64748b; }
   .tarjeta .amigo { font-size: 2.2rem; font-weight: 700; color: var(--rosa); margin: 6px 0 10px; word-break: break-word; }
-  .tarjeta .nota { color: #475569; font-size: .95rem; }
+  .tarjeta .nota { color: #475569; font-size: .95rem; line-height: 1.5; }
+  .tarjeta h2 { margin: 0 0 8px; font-size: 1.4rem; }
+  .tarjeta form { margin-top: 16px; }
+  .tarjeta label { color: #64748b; }
+  .tarjeta input.pin { background: #f1f5f9; color: #1e1b4b; border-color: #cbd5e1; }
+  .tarjeta input.pin:focus { border-color: var(--rosa); }
+  .tarjeta .boton.secundario { color: #64748b; border-color: #cbd5e1; margin-top: 10px; }
 
+  .notificacion {
+    margin: 0 0 18px; padding: 12px 14px; border-radius: 14px; line-height: 1.5; font-size: .95rem;
+    background: rgba(255,209,102,.14); border: 1.5px solid rgba(255,209,102,.45);
+  }
   .aviso { text-align: center; color: var(--suave); line-height: 1.6; }
   .aviso a { color: var(--acento); }
   .cargando { text-align: center; color: var(--suave); padding: 40px 0; }
@@ -123,19 +139,41 @@
     <div id="lista-nombres" class="chips"></div>
     <form id="form-pin" hidden autocomplete="off">
       <label for="pin">Escribe tu PIN</label>
-      <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="8" required>
+      <input id="pin" class="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required>
       <p class="error" id="error"></p>
       <button class="boton" type="submit">Entrar</button>
     </form>
     <p class="aviso" id="aviso" hidden></p>
   </section>
 
-  <!-- Pantalla 2: ruleta -->
+  <!-- Pantalla 2: crear / cambiar PIN personal -->
+  <section id="pantalla-pin" hidden>
+    <div class="cabecera">
+      <span id="saludo-pin"></span>
+      <button class="boton secundario" id="pin-cancelar" type="button">Cancelar</button>
+    </div>
+    <div class="tarjeta">
+      <h2>🔒 Tu PIN personal</h2>
+      <p class="nota" id="pin-explicacion"></p>
+      <form id="form-nuevo-pin" autocomplete="off">
+        <label for="pin-nuevo">Nuevo PIN (4 a 6 números)</label>
+        <input id="pin-nuevo" class="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required>
+        <label for="pin-nuevo2">Repítelo</label>
+        <input id="pin-nuevo2" class="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required>
+        <p class="error" id="pin-error"></p>
+        <button class="boton" type="submit" id="pin-guardar">Guardar mi PIN</button>
+      </form>
+      <button class="boton secundario" id="pin-omitir" type="button">Seguir con el PIN del organizador</button>
+    </div>
+  </section>
+
+  <!-- Pantalla 3: ruleta -->
   <section id="pantalla-ruleta" hidden>
     <div class="cabecera">
       <span id="saludo"></span>
       <button class="boton secundario" id="salir" type="button">Salir</button>
     </div>
+    <p class="notificacion" id="aviso-reinicio" hidden></p>
     <div class="ruleta-contenedor">
       <div class="puntero"></div>
       <canvas id="ruleta"></canvas>
@@ -149,6 +187,7 @@
       <p class="amigo" id="amigo"></p>
       <p class="nota" id="nota"></p>
     </div>
+    <p class="pie"><button class="enlace-boton" id="cambiar-pin" type="button">🔒 Cambiar mi PIN</button></p>
   </section>
 
 </main>
@@ -158,29 +197,60 @@
 <script src="common.js"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js';
-import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, writeBatch, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
 
 const db = getFirestore(initializeApp(window.FIREBASE_CONFIG));
 const $ = (s) => document.querySelector(s);
 const COLORES = ['#ef476f', '#ffd166', '#06d6a0', '#118ab2', '#f78c6b', '#9b5de5', '#00bbf9', '#f15bb5'];
 const DOS_PI = Math.PI * 2;
 
+// ---- Frases ----
+const FRASES_PIN_MALO = [
+  (n) => `🤨 Mmm… tú no eres ${n}. ¿O sí? Porque ${n} sí se sabe su PIN. 😏`,
+  (n) => `🙅 ¡No, no, no! Ese PIN no abre nada. Si de verdad eres ${n}, inténtalo otra vez.`,
+  (n) => `🕵️ Sospechoso… muy sospechoso. Ese no es el PIN de ${n}.`,
+];
+const FRASE_TERCER_INTENTO = (n) => `😅 Tranquilo, respira. Si eres ${n} y de verdad lo olvidaste, pídele al organizador que reinicie tu PIN.`;
+const FRASE_CADUCADO = (n) => `🙅‍♂️ ¡No, no, no! Ese código ya lo usó ${n} y caducó. Aquí no hay nada que ver, circule. 🕵️`;
+const FRASE_REINICIADO = (n, fecha) => `🔄 El organizador reinició el PIN de ${n} el ${fecha}. Entra con el código original que te envió.`;
+const FRASE_NO_VALIDO = (n) => `🙅 Ese PIN ya no es válido para ${n}. Si es tuyo y no entiendes por qué, pregúntale al organizador.`;
+
 const idEvento = new URLSearchParams(location.hash.slice(1)).get('e');
-let evento = null;  // { nombre, participantes: [...] }
-let yo = null;      // nombre seleccionado
-let amigo = null;   // nombre descifrado con el PIN
-let nonce = null;   // secreto que viaja cifrado; sirve para marcar "ya giró"
-let otros = [];     // nombres en la ruleta (todos menos yo)
-let rotacion = 0;   // rotación actual de la ruleta, en radianes
+let evento = null;   // { nombre, participantes: [...] }
+let yo = null;       // nombre seleccionado
+let pinActual = '';  // PIN con el que entró
+let tipoPin = '';    // 'invitacion' | 'personal'
+let amigo = null;    // nombre descifrado
+let secretos = null; // { nonceGiro, nonceCambio } (viajan cifrados con el PIN)
+let infoPin = null;  // pines/{yo}: { personal, cambiado, reiniciado }
+let yaGiro = false;
+let otros = [];      // nombres en la ruleta (todos menos yo)
+let rotacion = 0;
 let girando = false;
+let intentos = 0;
 
 const ordenar = (lista) => [...lista].sort((a, b) => a.localeCompare(b, 'es'));
-const refEstado = () => doc(db, 'eventos', idEvento, 'estado', yo);
+const ref = (...partes) => doc(db, 'eventos', idEvento, ...partes);
+const fechaBonita = (ts) => ts && ts.toDate ? ts.toDate().toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' }) : '';
+
+// Solo números en todos los campos de PIN
+document.querySelectorAll('input.pin').forEach((input) => {
+  input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, ''); });
+});
 
 function avisar(html) {
   $('#cargando').hidden = true;
   $('#aviso').innerHTML = html;
   $('#aviso').hidden = false;
+}
+
+function sacudir(input) {
+  input.classList.remove('sacudir'); void input.offsetWidth; input.classList.add('sacudir');
+  input.select();
+}
+
+function mostrarPantalla(id) {
+  ['pantalla-entrar', 'pantalla-pin', 'pantalla-ruleta'].forEach((p) => { $('#' + p).hidden = p !== id; });
 }
 
 // ============ Pantalla de entrada ============
@@ -191,7 +261,7 @@ async function iniciar() {
   }
   let snap;
   try {
-    snap = await AS.conTiempo(getDoc(doc(db, 'eventos', idEvento)), 15000);
+    snap = await AS.conTiempo(getDoc(ref()), 15000);
   } catch (err) {
     avisar(AS.MENSAJE_SIN_CONEXION);
     return;
@@ -218,6 +288,7 @@ async function iniciar() {
 
 function seleccionar(nombre, chip) {
   yo = nombre;
+  intentos = 0;
   document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('activo', c === chip));
   $('#form-pin').hidden = false;
   $('#error').textContent = '';
@@ -236,21 +307,42 @@ $('#form-pin').addEventListener('submit', async (e) => {
   try {
     // Del PIN salen el token (dónde está mi asignación) y la clave (cómo descifrarla)
     const { token, clave } = await AS.derivar(pin, AS.salt(idEvento, yo));
-    const snap = await AS.conTiempo(getDoc(doc(db, 'eventos', idEvento, 'asignaciones', token)), 15000);
+    let snap;
+    try {
+      snap = await AS.conTiempo(getDoc(ref('asignaciones', token)), 15000);
+    } catch (err) {
+      if (err.code === 'permission-denied') throw new Error('no-valido'); // existe, pero ya no está vigente
+      throw err;
+    }
     if (!snap.exists()) throw new Error('pin');
+
     const contenido = JSON.parse(await AS.descifrar(snap.data(), clave));
     amigo = contenido.amigo;
-    nonce = contenido.nonce;
-    const estado = await AS.conTiempo(getDoc(refEstado()), 15000);
-    entrar(estado.exists());
+    secretos = { nonceGiro: contenido.nonceGiro, nonceCambio: contenido.nonceCambio };
+    tipoPin = snap.data().tipo;
+    pinActual = pin;
+
+    const [estado, pines] = await AS.conTiempo(Promise.all([getDoc(ref('estado', yo)), getDoc(ref('pines', yo))]), 15000);
+    yaGiro = estado.exists();
+    infoPin = pines.exists() ? pines.data() : {};
+    intentos = 0;
+
+    // Primera vez con el código del organizador: proponer un PIN personal
+    if (tipoPin === 'invitacion' && !infoPin.personal) mostrarCrearPin(true);
+    else entrar();
   } catch (err) {
+    const input = $('#pin');
     if (err.message === 'pin' || err.name === 'OperationError') {
-      $('#error').textContent = 'PIN incorrecto. Inténtalo de nuevo.';
-      const input = $('#pin');
-      input.classList.remove('sacudir'); void input.offsetWidth; input.classList.add('sacudir');
-      input.select();
+      intentos++;
+      $('#error').textContent = intentos >= 3 ? FRASE_TERCER_INTENTO(yo) : FRASES_PIN_MALO[(intentos - 1) % FRASES_PIN_MALO.length](yo);
+      sacudir(input);
+    } else if (err.message === 'no-valido') {
+      $('#error').textContent = await fraseNoValido();
+      sacudir(input);
+    } else if (err.message === 'sin-conexion') {
+      $('#error').textContent = AS.MENSAJE_SIN_CONEXION;
     } else {
-      $('#error').textContent = err.message === 'sin-conexion' ? AS.MENSAJE_SIN_CONEXION : 'Error: ' + err.message;
+      $('#error').textContent = 'Error: ' + err.message;
     }
   } finally {
     boton.disabled = false;
@@ -258,16 +350,98 @@ $('#form-pin').addEventListener('submit', async (e) => {
   }
 });
 
+// El PIN existe pero ya no está vigente: ¿fue porque la persona creó uno personal, o porque lo reiniciaron?
+async function fraseNoValido() {
+  try {
+    const pines = await getDoc(ref('pines', yo));
+    const info = pines.exists() ? pines.data() : {};
+    if (info.personal) return FRASE_CADUCADO(yo);
+    if (info.reiniciado) return FRASE_REINICIADO(yo, fechaBonita(info.reiniciado));
+  } catch {}
+  return FRASE_NO_VALIDO(yo);
+}
+
+// ============ Pantalla de PIN personal ============
+let primeraVez = false;
+
+function mostrarCrearPin(esPrimeraVez) {
+  primeraVez = esPrimeraVez;
+  $('#saludo-pin').textContent = 'Hola, ' + yo + ' 👋';
+  $('#pin-explicacion').textContent = tipoPin === 'invitacion'
+    ? 'El PIN con el que entraste te lo envió el organizador, así que él también lo conoce. Crea uno que solo tú sepas y el suyo dejará de funcionar.'
+    : 'Elige tu nuevo PIN. El anterior dejará de funcionar.';
+  $('#pin-cancelar').hidden = esPrimeraVez;
+  $('#pin-omitir').hidden = !esPrimeraVez;
+  $('#pin-nuevo').value = '';
+  $('#pin-nuevo2').value = '';
+  $('#pin-error').textContent = '';
+  mostrarPantalla('pantalla-pin');
+  $('#pin-nuevo').focus();
+}
+
+$('#pin-omitir').addEventListener('click', entrar);
+$('#pin-cancelar').addEventListener('click', entrar);
+$('#cambiar-pin').addEventListener('click', () => mostrarCrearPin(false));
+
+$('#form-nuevo-pin').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const nuevo = $('#pin-nuevo').value.trim();
+  const repetido = $('#pin-nuevo2').value.trim();
+  const error = $('#pin-error');
+  error.textContent = '';
+  if (!/^\d{4,6}$/.test(nuevo)) { error.textContent = 'El PIN debe tener entre 4 y 6 números.'; sacudir($('#pin-nuevo')); return; }
+  if (nuevo !== repetido) { error.textContent = 'Los dos PIN no coinciden.'; sacudir($('#pin-nuevo2')); return; }
+  if (nuevo === pinActual) { error.textContent = 'Ese es el PIN que ya tienes. Elige uno diferente.'; sacudir($('#pin-nuevo')); return; }
+
+  const boton = $('#pin-guardar');
+  boton.disabled = true;
+  boton.textContent = 'Guardando…';
+  try {
+    const { token, clave } = await AS.derivar(nuevo, AS.salt(idEvento, yo));
+    const cifrado = await AS.cifrar(JSON.stringify({ amigo, ...secretos }), clave);
+    // Todo en una sola operación: nueva asignación cifrada + control apunta a ella + estado público
+    const lote = writeBatch(db);
+    lote.set(ref('asignaciones', token), { nombre: yo, tipo: 'personal', ...cifrado });
+    lote.update(ref('control', yo), { activo: 'personal', tokenPersonal: token, prueba: secretos.nonceCambio, cambiado: serverTimestamp() });
+    lote.set(ref('pines', yo), { personal: true, cambiado: serverTimestamp() });
+    await AS.conTiempo(lote.commit(), 20000);
+
+    pinActual = nuevo;
+    tipoPin = 'personal';
+    infoPin = { personal: true };
+    entrar('🔒 ¡Listo! Tu PIN personal quedó guardado. Ahora solo tú puedes entrar. No lo olvides 😉');
+  } catch (err) {
+    error.textContent = err.message === 'sin-conexion' ? AS.MENSAJE_SIN_CONEXION
+      : err.code === 'permission-denied' ? 'Ese PIN no se puede usar. Prueba con otro.'
+      : 'No se pudo guardar: ' + err.message;
+  } finally {
+    boton.disabled = false;
+    boton.textContent = 'Guardar mi PIN';
+  }
+});
+
 // ============ Pantalla de la ruleta ============
-function entrar(yaGiro) {
+function entrar(mensaje) {
   otros = ordenar(evento.participantes.filter((n) => n !== yo));
   if (!otros.includes(amigo)) {
+    mostrarPantalla('pantalla-entrar');
     $('#error').textContent = 'El sorteo parece dañado. Avísale al organizador.';
     return;
   }
   $('#saludo').textContent = 'Hola, ' + yo + ' 👋';
-  $('#pantalla-entrar').hidden = true;
-  $('#pantalla-ruleta').hidden = false;
+
+  const aviso = $('#aviso-reinicio');
+  if (typeof mensaje === 'string') {
+    aviso.textContent = mensaje;
+    aviso.hidden = false;
+  } else if (tipoPin === 'invitacion' && infoPin.reiniciado) {
+    aviso.textContent = '🔄 El organizador reinició tu PIN el ' + fechaBonita(infoPin.reiniciado) + '. Si no lo pediste tú, pregúntale qué pasó 👀. Puedes crear uno nuevo abajo.';
+    aviso.hidden = false;
+  } else {
+    aviso.hidden = true;
+  }
+
+  mostrarPantalla('pantalla-ruleta');
 
   if (yaGiro) {
     // Ya giró (desde este u otro dispositivo): la ruleta aparece quieta apuntando a su amigo.
@@ -284,11 +458,12 @@ function entrar(yaGiro) {
 }
 
 $('#salir').addEventListener('click', () => {
-  yo = amigo = nonce = null;
+  yo = amigo = secretos = infoPin = null;
+  pinActual = tipoPin = '';
   otros = [];
-  $('#pantalla-ruleta').hidden = true;
-  $('#pantalla-entrar').hidden = false;
+  mostrarPantalla('pantalla-entrar');
   $('#form-pin').hidden = true;
+  $('#error').textContent = '';
   document.querySelectorAll('.chip').forEach((c) => c.classList.remove('activo'));
 });
 
@@ -417,8 +592,9 @@ async function terminarGiro() {
   confeti();
   let nota = 'La ruleta ya no se puede volver a girar. ¡Guarda el secreto! 🤫';
   try {
-    // Registra en la nube que ya giró; solo se acepta porque presentamos el nonce secreto.
-    await AS.conTiempo(setDoc(refEstado(), { giro: true, fecha: serverTimestamp(), prueba: nonce }), 15000);
+    // Registra en la nube que ya giró; solo se acepta porque presentamos el secreto.
+    await AS.conTiempo(setDoc(ref('estado', yo), { giro: true, fecha: serverTimestamp(), prueba: secretos.nonceGiro }), 15000);
+    yaGiro = true;
   } catch (err) {
     if (err.code !== 'permission-denied') nota += ' (No se pudo registrar en línea, revisa tu conexión.)';
   }
