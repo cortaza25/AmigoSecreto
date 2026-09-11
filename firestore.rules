@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Un evento (juego). Solo se puede leer si conoces su id (no se pueden listar).
+    match /eventos/{evento} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if request.resource.data.keys().hasOnly(['nombre', 'creado', 'participantes'])
+                    && request.resource.data.nombre is string
+                    && request.resource.data.nombre.size() <= 60
+                    && request.resource.data.creado == request.time
+                    && request.resource.data.participantes is list
+                    && request.resource.data.participantes.size() >= 3
+                    && request.resource.data.participantes.size() <= 200;
+      allow update, delete: if false;
+
+      // Asignación cifrada de cada persona. El id del documento se deriva del PIN,
+      // así que sin el PIN no se puede ni pedir. Nunca se pueden listar.
+      match /asignaciones/{token} {
+        allow get: if true;
+        allow list: if false;
+        allow create: if request.resource.data.keys().hasOnly(['nombre', 'iv', 'data'])
+                      && request.resource.data.nombre is string
+                      && request.resource.data.iv is string
+                      && request.resource.data.data is string;
+        allow update, delete: if false;
+      }
+
+      // Huella (hash) del secreto de cada persona. Solo la usan estas reglas.
+      match /huellas/{nombre} {
+        allow read: if false;
+        allow create: if request.resource.data.keys().hasOnly(['huella'])
+                      && request.resource.data.huella is string;
+        allow update, delete: if false;
+      }
+
+      // "Ya giró". Cualquiera puede verlo (el organizador lo usa para el estado),
+      // pero solo se puede crear presentando el secreto que viaja cifrado con el PIN.
+      match /estado/{nombre} {
+        allow read: if true;
+        allow create: if request.resource.data.keys().hasOnly(['giro', 'fecha', 'prueba'])
+                      && request.resource.data.giro == true
+                      && request.resource.data.fecha == request.time
+                      && request.resource.data.prueba is string
+                      && hashing.sha256(request.resource.data.prueba).toHexString().lower()
+                         == get(/databases/$(database)/documents/eventos/$(evento)/huellas/$(nombre)).data.huella;
+        allow update, delete: if false;
+      }
+    }
+  }
+}

@@ -53,7 +53,7 @@
   input#pin:focus { border-color: var(--acento); }
   .sacudir { animation: sacudir .4s ease; }
   @keyframes sacudir { 20%,60% { transform: translateX(-8px); } 40%,80% { transform: translateX(8px); } }
-  .error { color: #fda4af; min-height: 1.4em; margin: 0; font-size: .95rem; }
+  .error { color: #fda4af; min-height: 1.4em; margin: 0; font-size: .95rem; text-align: center; }
 
   /* ---- Botones ---- */
   .boton {
@@ -103,8 +103,9 @@
   .tarjeta .amigo { font-size: 2.2rem; font-weight: 700; color: var(--rosa); margin: 6px 0 10px; word-break: break-word; }
   .tarjeta .nota { color: #475569; font-size: .95rem; }
 
-  .aviso { text-align: center; color: var(--suave); line-height: 1.5; }
+  .aviso { text-align: center; color: var(--suave); line-height: 1.6; }
   .aviso a { color: var(--acento); }
+  .cargando { text-align: center; color: var(--suave); padding: 40px 0; }
 
   canvas#confeti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
   [hidden] { display: none !important; }
@@ -117,7 +118,8 @@
   <section id="pantalla-entrar">
     <h1>🎁 Amigo Secreto</h1>
     <p class="evento" id="nombre-evento"></p>
-    <p class="pregunta">¿Quién eres?</p>
+    <p class="cargando" id="cargando">Cargando…</p>
+    <p class="pregunta" id="pregunta" hidden>¿Quién eres?</p>
     <div id="lista-nombres" class="chips"></div>
     <form id="form-pin" hidden autocomplete="off">
       <label for="pin">Escribe tu PIN</label>
@@ -125,10 +127,7 @@
       <p class="error" id="error"></p>
       <button class="boton" type="submit">Entrar</button>
     </form>
-    <p class="aviso" id="sin-config" hidden>
-      El organizador todavía no ha generado el sorteo.<br>
-      Si eres tú, ábrelo desde <a href="admin.html">admin.html</a>.
-    </p>
+    <p class="aviso" id="aviso" hidden></p>
   </section>
 
   <!-- Pantalla 2: ruleta -->
@@ -155,308 +154,346 @@
 </main>
 <canvas id="confeti" hidden></canvas>
 
-<script src="config.js"></script>
+<script src="firebase-config.js"></script>
 <script src="common.js"></script>
-<script>
-(() => {
-  const cfg = window.AMIGO_SECRETO;
-  const $ = (s) => document.querySelector(s);
-  const COLORES = ['#ef476f', '#ffd166', '#06d6a0', '#118ab2', '#f78c6b', '#9b5de5', '#00bbf9', '#f15bb5'];
-  const DOS_PI = Math.PI * 2;
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js';
+import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
 
-  let yo = null;      // participante seleccionado (entrada de config.js)
-  let amigo = null;   // nombre descifrado con el PIN
-  let otros = [];     // nombres en la ruleta (todos menos yo)
-  let rotacion = 0;   // rotación actual de la ruleta, en radianes
-  let girando = false;
+const db = getFirestore(initializeApp(window.FIREBASE_CONFIG));
+const $ = (s) => document.querySelector(s);
+const COLORES = ['#ef476f', '#ffd166', '#06d6a0', '#118ab2', '#f78c6b', '#9b5de5', '#00bbf9', '#f15bb5'];
+const DOS_PI = Math.PI * 2;
 
-  const claveLocal = () => 'amigo-secreto:' + cfg.id + ':' + yo.nombre;
-  const ordenar = (lista) => [...lista].sort((a, b) => a.localeCompare(b, 'es'));
+const idEvento = new URLSearchParams(location.hash.slice(1)).get('e');
+let evento = null;  // { nombre, participantes: [...] }
+let yo = null;      // nombre seleccionado
+let amigo = null;   // nombre descifrado con el PIN
+let nonce = null;   // secreto que viaja cifrado; sirve para marcar "ya giró"
+let otros = [];     // nombres en la ruleta (todos menos yo)
+let rotacion = 0;   // rotación actual de la ruleta, en radianes
+let girando = false;
 
-  // ============ Pantalla de entrada ============
-  function iniciar() {
-    if (!cfg || !Array.isArray(cfg.participantes) || cfg.participantes.length < 2) {
-      $('#sin-config').hidden = false;
-      $('#lista-nombres').hidden = true;
-      $('.pregunta').hidden = true;
-      return;
-    }
-    $('#nombre-evento').textContent = cfg.evento || '';
-    const lista = $('#lista-nombres');
-    for (const nombre of ordenar(cfg.participantes.map((p) => p.nombre))) {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'chip';
-      chip.textContent = nombre;
-      chip.addEventListener('click', () => seleccionar(nombre, chip));
-      lista.appendChild(chip);
-    }
+const ordenar = (lista) => [...lista].sort((a, b) => a.localeCompare(b, 'es'));
+const refEstado = () => doc(db, 'eventos', idEvento, 'estado', yo);
+
+function avisar(html) {
+  $('#cargando').hidden = true;
+  $('#aviso').innerHTML = html;
+  $('#aviso').hidden = false;
+}
+
+// ============ Pantalla de entrada ============
+async function iniciar() {
+  if (!idEvento) {
+    avisar('Este enlace no tiene ningún juego.<br>Pídele al organizador el enlace correcto, o <a href="admin.html">crea uno nuevo</a>.');
+    return;
   }
-
-  function seleccionar(nombre, chip) {
-    yo = cfg.participantes.find((p) => p.nombre === nombre);
-    document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('activo', c === chip));
-    $('#form-pin').hidden = false;
-    $('#error').textContent = '';
-    $('#pin').value = '';
-    $('#pin').focus();
+  let snap;
+  try {
+    snap = await AS.conTiempo(getDoc(doc(db, 'eventos', idEvento)), 15000);
+  } catch (err) {
+    avisar(AS.MENSAJE_SIN_CONEXION);
+    return;
   }
+  if (!snap.exists()) {
+    avisar('No existe ningún juego con este enlace.<br>Revisa que lo hayas copiado completo.');
+    return;
+  }
+  evento = snap.data();
+  $('#nombre-evento').textContent = evento.nombre || '';
+  $('#cargando').hidden = true;
+  $('#pregunta').hidden = false;
 
-  $('#form-pin').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const pin = $('#pin').value.trim();
-    if (!yo || !pin) return;
-    const boton = e.target.querySelector('button');
-    boton.disabled = true;
-    boton.textContent = 'Verificando…';
-    try {
-      amigo = await AS.descifrar(yo, pin);
-      entrar();
-    } catch {
+  const lista = $('#lista-nombres');
+  for (const nombre of ordenar(evento.participantes)) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    chip.textContent = nombre;
+    chip.addEventListener('click', () => seleccionar(nombre, chip));
+    lista.appendChild(chip);
+  }
+}
+
+function seleccionar(nombre, chip) {
+  yo = nombre;
+  document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('activo', c === chip));
+  $('#form-pin').hidden = false;
+  $('#error').textContent = '';
+  $('#pin').value = '';
+  $('#pin').focus();
+}
+
+$('#form-pin').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const pin = $('#pin').value.trim();
+  if (!yo || !pin) return;
+  const boton = e.target.querySelector('button');
+  boton.disabled = true;
+  boton.textContent = 'Verificando…';
+  $('#error').textContent = '';
+  try {
+    // Del PIN salen el token (dónde está mi asignación) y la clave (cómo descifrarla)
+    const { token, clave } = await AS.derivar(pin, AS.salt(idEvento, yo));
+    const snap = await AS.conTiempo(getDoc(doc(db, 'eventos', idEvento, 'asignaciones', token)), 15000);
+    if (!snap.exists()) throw new Error('pin');
+    const contenido = JSON.parse(await AS.descifrar(snap.data(), clave));
+    amigo = contenido.amigo;
+    nonce = contenido.nonce;
+    const estado = await AS.conTiempo(getDoc(refEstado()), 15000);
+    entrar(estado.exists());
+  } catch (err) {
+    if (err.message === 'pin' || err.name === 'OperationError') {
       $('#error').textContent = 'PIN incorrecto. Inténtalo de nuevo.';
       const input = $('#pin');
       input.classList.remove('sacudir'); void input.offsetWidth; input.classList.add('sacudir');
       input.select();
-    } finally {
-      boton.disabled = false;
-      boton.textContent = 'Entrar';
-    }
-  });
-
-  // ============ Pantalla de la ruleta ============
-  function entrar() {
-    otros = ordenar(cfg.participantes.map((p) => p.nombre).filter((n) => n !== yo.nombre));
-    if (!otros.includes(amigo)) {
-      $('#error').textContent = 'El sorteo parece dañado: vuelve a generar config.js.';
-      return;
-    }
-    $('#saludo').textContent = 'Hola, ' + yo.nombre + ' 👋';
-    $('#pantalla-entrar').hidden = true;
-    $('#pantalla-ruleta').hidden = false;
-
-    let yaGiro = false;
-    try { yaGiro = !!localStorage.getItem(claveLocal()); } catch {}
-
-    if (yaGiro) {
-      // Ya giró antes: la ruleta aparece quieta apuntando a su amigo, sin botón de girar.
-      rotacion = anguloFinal(otros.indexOf(amigo), 0, 0);
-      dibujarRuleta();
-      mostrarResultado('Ya giraste anteriormente, así que la ruleta no se puede volver a girar. ¡Guarda el secreto! 🤫');
     } else {
-      rotacion = 0;
-      dibujarRuleta();
-      $('#girar').hidden = false;
-      $('#girar').disabled = false;
-      $('#resultado').hidden = true;
+      $('#error').textContent = err.message === 'sin-conexion' ? AS.MENSAJE_SIN_CONEXION : 'Error: ' + err.message;
     }
+  } finally {
+    boton.disabled = false;
+    boton.textContent = 'Entrar';
   }
+});
 
-  $('#salir').addEventListener('click', () => {
-    yo = amigo = null;
-    otros = [];
-    $('#pantalla-ruleta').hidden = true;
-    $('#pantalla-entrar').hidden = false;
-    $('#form-pin').hidden = true;
-    document.querySelectorAll('.chip').forEach((c) => c.classList.remove('activo'));
-  });
+// ============ Pantalla de la ruleta ============
+function entrar(yaGiro) {
+  otros = ordenar(evento.participantes.filter((n) => n !== yo));
+  if (!otros.includes(amigo)) {
+    $('#error').textContent = 'El sorteo parece dañado. Avísale al organizador.';
+    return;
+  }
+  $('#saludo').textContent = 'Hola, ' + yo + ' 👋';
+  $('#pantalla-entrar').hidden = true;
+  $('#pantalla-ruleta').hidden = false;
 
-  $('#girar').addEventListener('click', girar);
+  if (yaGiro) {
+    // Ya giró (desde este u otro dispositivo): la ruleta aparece quieta apuntando a su amigo.
+    rotacion = anguloFinal(otros.indexOf(amigo), 0, 0);
+    dibujarRuleta();
+    mostrarResultado('Ya giraste anteriormente, así que la ruleta no se puede volver a girar. ¡Guarda el secreto! 🤫');
+  } else {
+    rotacion = 0;
+    dibujarRuleta();
+    $('#girar').hidden = false;
+    $('#girar').disabled = false;
+    $('#resultado').hidden = true;
+  }
+}
 
-  // ---- Dibujo de la ruleta ----
-  const lienzo = $('#ruleta');
+$('#salir').addEventListener('click', () => {
+  yo = amigo = nonce = null;
+  otros = [];
+  $('#pantalla-ruleta').hidden = true;
+  $('#pantalla-entrar').hidden = false;
+  $('#form-pin').hidden = true;
+  document.querySelectorAll('.chip').forEach((c) => c.classList.remove('activo'));
+});
 
-  function dibujarRuleta() {
-    const tam = lienzo.clientWidth;
-    if (!tam) return;
-    const dpr = window.devicePixelRatio || 1;
-    lienzo.width = tam * dpr;
-    lienzo.height = tam * dpr;
-    const ctx = lienzo.getContext('2d');
-    ctx.scale(dpr, dpr);
+$('#girar').addEventListener('click', girar);
 
-    const r = tam / 2;
-    const n = otros.length;
-    const seg = DOS_PI / n;
-    const fuenteMax = Math.max(10, Math.min(22, 0.5 * r * seg));
-    const anchoTexto = r - 18 - 44; // desde el borde hasta el botón central
+// ---- Dibujo de la ruleta ----
+const lienzo = $('#ruleta');
 
-    otros.forEach((nombre, i) => {
-      const ini = i * seg;
-      // Evita que el último y el primero queden del mismo color al cerrar el círculo
-      let color = COLORES[i % COLORES.length];
-      if (i === n - 1 && n > 1 && color === COLORES[0]) color = COLORES[1];
+function dibujarRuleta() {
+  const tam = lienzo.clientWidth;
+  if (!tam) return;
+  const dpr = window.devicePixelRatio || 1;
+  lienzo.width = tam * dpr;
+  lienzo.height = tam * dpr;
+  const ctx = lienzo.getContext('2d');
+  ctx.scale(dpr, dpr);
 
-      ctx.beginPath();
-      ctx.moveTo(r, r);
-      ctx.arc(r, r, r - 4, ini, ini + seg);
-      ctx.closePath();
-      ctx.fillStyle = color;
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+  const r = tam / 2;
+  const n = otros.length;
+  const seg = DOS_PI / n;
+  const fuenteMax = Math.max(10, Math.min(22, 0.5 * r * seg));
+  const anchoTexto = r - 18 - 44; // desde el borde hasta el botón central
 
-      // Nombre escrito a lo largo del radio
-      ctx.save();
-      ctx.translate(r, r);
-      ctx.rotate(ini + seg / 2);
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#1e1b4b';
-      ctx.fillText(ajustar(ctx, nombre, anchoTexto, fuenteMax), r - 18, 0);
-      ctx.restore();
-    });
+  otros.forEach((nombre, i) => {
+    const ini = i * seg;
+    // Evita que el último y el primero queden del mismo color al cerrar el círculo
+    let color = COLORES[i % COLORES.length];
+    if (i === n - 1 && n > 1 && color === COLORES[0]) color = COLORES[1];
 
     ctx.beginPath();
-    ctx.arc(r, r, r - 3, 0, DOS_PI);
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 6;
+    ctx.moveTo(r, r);
+    ctx.arc(r, r, r - 4, ini, ini + seg);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 2;
     ctx.stroke();
 
+    // Nombre escrito a lo largo del radio
+    ctx.save();
+    ctx.translate(r, r);
+    ctx.rotate(ini + seg / 2);
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#1e1b4b';
+    ctx.fillText(ajustar(ctx, nombre, anchoTexto, fuenteMax), r - 18, 0);
+    ctx.restore();
+  });
+
+  ctx.beginPath();
+  ctx.arc(r, r, r - 3, 0, DOS_PI);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+
+  aplicarRotacion();
+}
+
+// Reduce la fuente hasta que el nombre quepa (mínimo 11px) y, si aun así no cabe, lo recorta.
+function ajustar(ctx, texto, ancho, fuenteMax) {
+  for (let f = fuenteMax; f >= 11; f -= 1) {
+    ctx.font = '600 ' + f + 'px Fredoka, system-ui, sans-serif';
+    if (ctx.measureText(texto).width <= ancho) return texto;
+  }
+  let t = texto;
+  while (t.length > 1 && ctx.measureText(t + '…').width > ancho) t = t.slice(0, -1);
+  return t + '…';
+}
+
+function aplicarRotacion() {
+  lienzo.style.transform = 'rotate(' + rotacion + 'rad)';
+}
+
+window.addEventListener('resize', () => { if (!$('#pantalla-ruleta').hidden && !girando) dibujarRuleta(); });
+
+// Rotación necesaria para que el segmento `indice` quede bajo el puntero (arriba, -π/2).
+function anguloFinal(indice, vueltas, desvio) {
+  const seg = DOS_PI / otros.length;
+  const objetivo = -Math.PI / 2 - (indice + 0.5) * seg + desvio;
+  const base = ((objetivo % DOS_PI) + DOS_PI) % DOS_PI;
+  return vueltas * DOS_PI + base;
+}
+
+function segmentoBajoPuntero() {
+  const seg = DOS_PI / otros.length;
+  const local = (((-Math.PI / 2 - rotacion) % DOS_PI) + DOS_PI) % DOS_PI;
+  return Math.floor(local / seg);
+}
+
+// ---- Giro ----
+function girar() {
+  if (girando) return;
+  girando = true;
+  $('#girar').disabled = true;
+  $('#girar').textContent = 'Girando…';
+
+  const seg = DOS_PI / otros.length;
+  const desvio = (Math.random() - 0.5) * seg * 0.7;       // no cae siempre en el centro exacto
+  const vueltas = 6 + AS.aleatorio(3);
+  const inicio = rotacion % DOS_PI;
+  const destino = anguloFinal(otros.indexOf(amigo), vueltas, desvio);
+  const duracion = 5500;
+  const t0 = performance.now();
+  let ultimoSeg = segmentoBajoPuntero();
+  let ultimoTic = 0;
+
+  function paso(ahora) {
+    const t = Math.min(1, (ahora - t0) / duracion);
+    const e = 1 - Math.pow(1 - t, 4); // frena suave al final
+    rotacion = inicio + (destino - inicio) * e;
     aplicarRotacion();
-  }
 
-  // Reduce la fuente hasta que el nombre quepa (mínimo 11px) y, si aun así no cabe, lo recorta.
-  function ajustar(ctx, texto, ancho, fuenteMax) {
-    for (let f = fuenteMax; f >= 11; f -= 1) {
-      ctx.font = '600 ' + f + 'px Fredoka, system-ui, sans-serif';
-      if (ctx.measureText(texto).width <= ancho) return texto;
+    const s = segmentoBajoPuntero();
+    if (s !== ultimoSeg && ahora - ultimoTic > 40) { ultimoSeg = s; ultimoTic = ahora; tic(); }
+
+    if (t < 1) requestAnimationFrame(paso);
+    else terminarGiro();
+  }
+  requestAnimationFrame(paso);
+}
+
+async function terminarGiro() {
+  girando = false;
+  tada();
+  confeti();
+  let nota = 'La ruleta ya no se puede volver a girar. ¡Guarda el secreto! 🤫';
+  try {
+    // Registra en la nube que ya giró; solo se acepta porque presentamos el nonce secreto.
+    await AS.conTiempo(setDoc(refEstado(), { giro: true, fecha: serverTimestamp(), prueba: nonce }), 15000);
+  } catch (err) {
+    if (err.code !== 'permission-denied') nota += ' (No se pudo registrar en línea, revisa tu conexión.)';
+  }
+  mostrarResultado(nota);
+}
+
+function mostrarResultado(nota) {
+  $('#girar').hidden = true;
+  $('#girar').textContent = '¡Girar la ruleta!';
+  $('#amigo').textContent = amigo;
+  $('#nota').textContent = nota;
+  $('#resultado').hidden = false;
+}
+
+// ---- Sonidos (Web Audio; si falla, se ignora) ----
+let audio;
+function contexto() {
+  audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+  return audio;
+}
+function nota(freq, inicio, dur, tipo, vol) {
+  const a = contexto();
+  const o = a.createOscillator();
+  const g = a.createGain();
+  o.type = tipo || 'square';
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(vol || 0.03, a.currentTime + inicio);
+  g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + inicio + dur);
+  o.connect(g).connect(a.destination);
+  o.start(a.currentTime + inicio);
+  o.stop(a.currentTime + inicio + dur);
+}
+function tic() { try { nota(900, 0, 0.05); } catch {} }
+function tada() {
+  try { [523, 659, 784, 1047].forEach((f, i) => nota(f, i * 0.12, 0.5, 'triangle', 0.08)); } catch {}
+}
+
+// ---- Confeti ----
+function confeti() {
+  const c = $('#confeti');
+  const ctx = c.getContext('2d');
+  c.width = innerWidth;
+  c.height = innerHeight;
+  c.hidden = false;
+  const piezas = Array.from({ length: 160 }, () => ({
+    x: Math.random() * c.width,
+    y: -20 - Math.random() * c.height * 0.4,
+    vx: (Math.random() - 0.5) * 3,
+    vy: 2 + Math.random() * 4,
+    w: 6 + Math.random() * 6,
+    h: 8 + Math.random() * 8,
+    rot: Math.random() * Math.PI,
+    vr: (Math.random() - 0.5) * 0.25,
+    color: COLORES[Math.floor(Math.random() * COLORES.length)],
+  }));
+  const t0 = performance.now();
+  (function paso(ahora) {
+    ctx.clearRect(0, 0, c.width, c.height);
+    let vivos = 0;
+    for (const p of piezas) {
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.vy += 0.03;
+      if (p.y < c.height + 20) vivos++;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
     }
-    let t = texto;
-    while (t.length > 1 && ctx.measureText(t + '…').width > ancho) t = t.slice(0, -1);
-    return t + '…';
-  }
+    if (vivos > 0 && ahora - t0 < 7000) requestAnimationFrame(paso);
+    else { ctx.clearRect(0, 0, c.width, c.height); c.hidden = true; }
+  })(t0);
+}
 
-  function aplicarRotacion() {
-    lienzo.style.transform = 'rotate(' + rotacion + 'rad)';
-  }
-
-  window.addEventListener('resize', () => { if (!$('#pantalla-ruleta').hidden && !girando) dibujarRuleta(); });
-
-  // Rotación necesaria para que el segmento `indice` quede bajo el puntero (arriba, -π/2).
-  function anguloFinal(indice, vueltas, desvio) {
-    const seg = DOS_PI / otros.length;
-    const objetivo = -Math.PI / 2 - (indice + 0.5) * seg + desvio;
-    const base = ((objetivo % DOS_PI) + DOS_PI) % DOS_PI;
-    return vueltas * DOS_PI + base;
-  }
-
-  function segmentoBajoPuntero() {
-    const seg = DOS_PI / otros.length;
-    const local = (((-Math.PI / 2 - rotacion) % DOS_PI) + DOS_PI) % DOS_PI;
-    return Math.floor(local / seg);
-  }
-
-  // ---- Giro ----
-  function girar() {
-    if (girando) return;
-    girando = true;
-    $('#girar').disabled = true;
-    $('#girar').textContent = 'Girando…';
-
-    const seg = DOS_PI / otros.length;
-    const desvio = (Math.random() - 0.5) * seg * 0.7;       // no cae siempre en el centro exacto
-    const vueltas = 6 + AS.aleatorio(3);
-    const inicio = rotacion % DOS_PI;
-    const destino = anguloFinal(otros.indexOf(amigo), vueltas, desvio);
-    const duracion = 5500;
-    const t0 = performance.now();
-    let ultimoSeg = segmentoBajoPuntero();
-    let ultimoTic = 0;
-
-    function paso(ahora) {
-      const t = Math.min(1, (ahora - t0) / duracion);
-      const e = 1 - Math.pow(1 - t, 4); // frena suave al final
-      rotacion = inicio + (destino - inicio) * e;
-      aplicarRotacion();
-
-      const s = segmentoBajoPuntero();
-      if (s !== ultimoSeg && ahora - ultimoTic > 40) { ultimoSeg = s; ultimoTic = ahora; tic(); }
-
-      if (t < 1) requestAnimationFrame(paso);
-      else terminarGiro();
-    }
-    requestAnimationFrame(paso);
-  }
-
-  function terminarGiro() {
-    girando = false;
-    try { localStorage.setItem(claveLocal(), JSON.stringify({ fecha: new Date().toISOString() })); } catch {}
-    tada();
-    confeti();
-    mostrarResultado('La ruleta ya no se puede volver a girar. ¡Guarda el secreto! 🤫');
-  }
-
-  function mostrarResultado(nota) {
-    $('#girar').hidden = true;
-    $('#girar').textContent = '¡Girar la ruleta!';
-    $('#amigo').textContent = amigo;
-    $('#nota').textContent = nota;
-    $('#resultado').hidden = false;
-  }
-
-  // ---- Sonidos (Web Audio; si falla, se ignora) ----
-  let audio;
-  function contexto() {
-    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-    return audio;
-  }
-  function nota(freq, inicio, dur, tipo, vol) {
-    const a = contexto();
-    const o = a.createOscillator();
-    const g = a.createGain();
-    o.type = tipo || 'square';
-    o.frequency.value = freq;
-    g.gain.setValueAtTime(vol || 0.03, a.currentTime + inicio);
-    g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + inicio + dur);
-    o.connect(g).connect(a.destination);
-    o.start(a.currentTime + inicio);
-    o.stop(a.currentTime + inicio + dur);
-  }
-  function tic() { try { nota(900, 0, 0.05); } catch {} }
-  function tada() {
-    try { [523, 659, 784, 1047].forEach((f, i) => nota(f, i * 0.12, 0.5, 'triangle', 0.08)); } catch {}
-  }
-
-  // ---- Confeti ----
-  function confeti() {
-    const c = $('#confeti');
-    const ctx = c.getContext('2d');
-    c.width = innerWidth;
-    c.height = innerHeight;
-    c.hidden = false;
-    const piezas = Array.from({ length: 160 }, () => ({
-      x: Math.random() * c.width,
-      y: -20 - Math.random() * c.height * 0.4,
-      vx: (Math.random() - 0.5) * 3,
-      vy: 2 + Math.random() * 4,
-      w: 6 + Math.random() * 6,
-      h: 8 + Math.random() * 8,
-      rot: Math.random() * Math.PI,
-      vr: (Math.random() - 0.5) * 0.25,
-      color: COLORES[Math.floor(Math.random() * COLORES.length)],
-    }));
-    const t0 = performance.now();
-    (function paso(ahora) {
-      ctx.clearRect(0, 0, c.width, c.height);
-      let vivos = 0;
-      for (const p of piezas) {
-        p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.vy += 0.03;
-        if (p.y < c.height + 20) vivos++;
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.rot);
-        ctx.fillStyle = p.color;
-        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-        ctx.restore();
-      }
-      if (vivos > 0 && ahora - t0 < 7000) requestAnimationFrame(paso);
-      else { ctx.clearRect(0, 0, c.width, c.height); c.hidden = true; }
-    })(t0);
-  }
-
-  iniciar();
-})();
+iniciar();
 </script>
 </body>
 </html>

@@ -22,6 +22,7 @@
   h1 { font-size: 1.8rem; margin: 0 0 6px; }
   h2 { font-size: 1.2rem; margin: 30px 0 10px; color: var(--acento); }
   p { line-height: 1.5; color: var(--suave); }
+  a { color: var(--acento); }
   code { background: rgba(0,0,0,.3); padding: 2px 6px; border-radius: 6px; color: var(--acento); }
   label { display: block; font-weight: 600; margin: 16px 0 6px; }
   input, textarea, select {
@@ -46,198 +47,269 @@
   th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--borde); }
   th { color: var(--acento); font-weight: 600; }
   td.pin { font-family: ui-monospace, Consolas, monospace; font-size: 1.15rem; letter-spacing: 3px; }
+  td.fecha { color: var(--suave); font-size: .9rem; }
+  .enlace {
+    display: flex; gap: 8px; align-items: center; background: rgba(0,0,0,.3); border-radius: 12px; padding: 10px 12px;
+    font-family: ui-monospace, Consolas, monospace; font-size: .9rem; word-break: break-all;
+  }
+  .enlace span { flex: 1; }
+  .enlace button { margin: 0; white-space: nowrap; }
   .aviso { background: rgba(255,209,102,.12); border: 1.5px solid rgba(255,209,102,.4); border-radius: 12px; padding: 12px 14px; }
   .ok { color: #86efac; }
+  .progreso { font-size: 1.1rem; font-weight: 600; margin: 0 0 12px; color: var(--texto); }
+  .listo { color: #86efac; font-weight: 600; }
+  .pendiente { color: var(--suave); }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <main>
-  <h1>🎁 Amigo Secreto · Organizador</h1>
-  <p>Escribe los nombres, genera el sorteo y sube el archivo <code>config.js</code> al repositorio.
-     El sorteo se hace aquí, en tu navegador, y queda cifrado con el PIN de cada persona:
-     ni siquiera tú verás quién le tocó a quién. 🤫</p>
 
-  <form id="form">
-    <label for="evento">Nombre del evento</label>
-    <input id="evento" value="Amigo Secreto 2026">
+  <!-- ===== Modo crear ===== -->
+  <section id="crear">
+    <h1>🎁 Amigo Secreto · Organizador</h1>
+    <p>Escribe los nombres y crea el juego. El sorteo se hace aquí, en tu navegador, y se guarda cifrado
+       con el PIN de cada persona: ni siquiera tú verás quién le tocó a quién. 🤫</p>
 
-    <label for="nombres">Participantes (uno por línea)</label>
-    <textarea id="nombres" placeholder="Ana&#10;Carlos&#10;Daniela&#10;…"></textarea>
-    <div class="contador" id="contador">0 participantes</div>
+    <form id="form">
+      <label for="evento">Nombre del evento</label>
+      <input id="evento" value="Amigo Secreto 2026" maxlength="60">
 
-    <div class="fila">
-      <div>
-        <label for="largo">Largo del PIN</label>
-        <select id="largo">
-          <option value="4">4 dígitos</option>
-          <option value="6" selected>6 dígitos</option>
-        </select>
+      <label for="nombres">Participantes (uno por línea)</label>
+      <textarea id="nombres" placeholder="Ana&#10;Carlos&#10;Daniela&#10;…"></textarea>
+      <div class="contador" id="contador">0 participantes</div>
+
+      <div class="fila">
+        <div>
+          <label for="largo">Largo del PIN</label>
+          <select id="largo">
+            <option value="4">4 dígitos</option>
+            <option value="6" selected>6 dígitos</option>
+          </select>
+        </div>
       </div>
-    </div>
 
-    <button class="boton" type="submit" id="generar">Generar sorteo</button>
-    <p class="error" id="error"></p>
-  </form>
+      <button class="boton" type="submit" id="generar">Crear juego</button>
+      <p class="error" id="error"></p>
+    </form>
+  </section>
 
-  <section id="resultado" hidden>
-    <h2>1. Envía a cada persona su PIN (en privado)</h2>
-    <table>
-      <thead><tr><th>Nombre</th><th>PIN</th></tr></thead>
-      <tbody id="tabla"></tbody>
-    </table>
+  <!-- ===== Modo estado ===== -->
+  <section id="estado" hidden>
+    <h1>🎁 <span id="titulo-evento"></span></h1>
+    <p>Panel del organizador · <a href="admin.html" id="nuevo">crear otro juego</a></p>
+
+    <h2>1. Enlace del juego (compártelo con todos)</h2>
+    <div class="enlace"><span id="enlace-juego"></span><button class="boton secundario" type="button" id="copiar-juego">Copiar</button></div>
+
+    <h2>2. PIN de cada persona (envíalos en privado)</h2>
+    <p id="sin-pines" hidden>Los PIN solo se muestran en el navegador donde se creó el juego. Si los perdiste, crea un juego nuevo.</p>
+    <table id="tabla-pines"><thead><tr><th>Nombre</th><th>PIN</th></tr></thead><tbody></tbody></table>
     <button class="boton secundario" type="button" id="copiar-pines">Copiar lista de PIN</button>
     <span class="ok" id="ok-pines"></span>
 
-    <h2>2. Reemplaza <code>config.js</code> en el repositorio</h2>
-    <p>Descarga el archivo (o copia el contenido), reemplaza el <code>config.js</code> del repositorio
-       y sube los cambios. En un minuto la página publicada ya tendrá el nuevo sorteo.</p>
-    <textarea id="config" readonly rows="10"></textarea>
-    <button class="boton secundario" type="button" id="descargar">Descargar config.js</button>
-    <button class="boton secundario" type="button" id="copiar-config">Copiar contenido</button>
-    <span class="ok" id="ok-config"></span>
+    <h2>3. ¿Quién ya giró?</h2>
+    <p class="progreso" id="progreso"></p>
+    <table id="tabla-estado"><thead><tr><th>Nombre</th><th>Estado</th><th>Cuándo</th></tr></thead><tbody></tbody></table>
+    <p>Se actualiza solo, sin recargar la página.</p>
 
-    <p class="aviso">⚠️ Si vuelves a generar, cambian las asignaciones y los PIN. Hazlo solo antes de repartirlos.</p>
+    <h2>Tu enlace de organizador</h2>
+    <p>Guárdalo para volver a este panel:</p>
+    <div class="enlace"><span id="enlace-admin"></span><button class="boton secundario" type="button" id="copiar-admin">Copiar</button></div>
+    <p class="aviso">⚠️ Guarda los PIN ahora: no quedan en la nube y no se pueden recuperar después.</p>
   </section>
+
 </main>
 
+<script src="firebase-config.js"></script>
 <script src="common.js"></script>
-<script>
-(() => {
-  const $ = (s) => document.querySelector(s);
-  let textoConfig = '';
-  let textoPines = '';
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js';
+import { getFirestore, doc, getDoc, writeBatch, collection, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
 
-  function leerNombres() {
-    return $('#nombres').value.split('\n').map((n) => n.trim()).filter(Boolean);
+const db = getFirestore(initializeApp(window.FIREBASE_CONFIG));
+const $ = (s) => document.querySelector(s);
+const ordenar = (lista) => [...lista].sort((a, b) => a.localeCompare(b, 'es'));
+const claveLocal = (id) => 'amigo-secreto-admin:' + id;
+
+// ============ Modo crear ============
+function leerNombres() {
+  return $('#nombres').value.split('\n').map((n) => n.trim()).filter(Boolean);
+}
+
+$('#nombres').addEventListener('input', () => {
+  const n = leerNombres().length;
+  $('#contador').textContent = n + (n === 1 ? ' participante' : ' participantes');
+});
+
+function pinAleatorio(largo) {
+  let p = '';
+  for (let i = 0; i < largo; i++) p += AS.aleatorio(10);
+  return p;
+}
+
+// Sorteo: mezcla los nombres y forma un ciclo (cada uno regala al siguiente).
+// Así nadie se regala a sí mismo y todos reciben exactamente un regalo.
+function sortear(nombres) {
+  const orden = [...nombres];
+  for (let i = orden.length - 1; i > 0; i--) {
+    const j = AS.aleatorio(i + 1);
+    [orden[i], orden[j]] = [orden[j], orden[i]];
   }
+  const amigoDe = new Map();
+  orden.forEach((n, i) => amigoDe.set(n, orden[(i + 1) % orden.length]));
+  return amigoDe;
+}
 
-  $('#nombres').addEventListener('input', () => {
-    const n = leerNombres().length;
-    $('#contador').textContent = n + (n === 1 ? ' participante' : ' participantes');
-  });
+$('#form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const error = $('#error');
+  error.textContent = '';
 
-  function pinAleatorio(largo) {
-    let p = '';
-    for (let i = 0; i < largo; i++) p += AS.aleatorio(10);
-    return p;
-  }
+  const nombres = leerNombres();
+  const repetidos = nombres.filter((n, i) => nombres.findIndex((m) => m.toLowerCase() === n.toLowerCase()) !== i);
+  if (nombres.length < 3) { error.textContent = 'Necesitas al menos 3 participantes.'; return; }
+  if (nombres.length > 200) { error.textContent = 'Máximo 200 participantes.'; return; }
+  if (repetidos.length) { error.textContent = 'Hay nombres repetidos: ' + [...new Set(repetidos)].join(', '); return; }
+  if (nombres.some((n) => n.length > 40 || n.includes('/'))) { error.textContent = 'Usa nombres de máximo 40 caracteres y sin "/".'; return; }
 
-  function idAleatorio() {
-    const letras = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let id = '';
-    for (let i = 0; i < 8; i++) id += letras[AS.aleatorio(letras.length)];
-    return id;
-  }
+  const boton = $('#generar');
+  boton.disabled = true;
+  boton.textContent = 'Creando…';
 
-  // Sorteo: mezcla los nombres y forma un ciclo (cada uno regala al siguiente).
-  // Así nadie se regala a sí mismo y todos reciben exactamente un regalo.
-  function sortear(nombres) {
-    const orden = [...nombres];
-    for (let i = orden.length - 1; i > 0; i--) {
-      const j = AS.aleatorio(i + 1);
-      [orden[i], orden[j]] = [orden[j], orden[i]];
+  try {
+    const largo = Number($('#largo').value);
+    const id = AS.idAleatorio(8);
+    const nombreEvento = $('#evento').value.trim() || 'Amigo Secreto';
+    const ordenados = ordenar(nombres);
+    const amigoDe = sortear(nombres);
+
+    // PIN únicos por persona
+    const pines = {};
+    const usados = new Set();
+    for (const n of nombres) {
+      let p;
+      do { p = pinAleatorio(largo); } while (usados.has(p));
+      usados.add(p);
+      pines[n] = p;
     }
-    const amigoDe = new Map();
-    orden.forEach((n, i) => amigoDe.set(n, orden[(i + 1) % orden.length]));
-    return amigoDe;
-  }
 
-  $('#form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const error = $('#error');
-    error.textContent = '';
-
-    const nombres = leerNombres();
-    const repetidos = nombres.filter((n, i) => nombres.findIndex((m) => m.toLowerCase() === n.toLowerCase()) !== i);
-    if (nombres.length < 3) { error.textContent = 'Necesitas al menos 3 participantes.'; return; }
-    if (repetidos.length) { error.textContent = 'Hay nombres repetidos: ' + [...new Set(repetidos)].join(', '); return; }
-    if (nombres.some((n) => n.length > 40)) { error.textContent = 'Usa nombres de máximo 40 caracteres.'; return; }
-
-    const boton = $('#generar');
-    boton.disabled = true;
-    boton.textContent = 'Generando…';
-
-    try {
-      const largo = Number($('#largo').value);
-      const amigoDe = sortear(nombres);
-
-      // PIN únicos por persona
-      const pines = new Map();
-      const usados = new Set();
-      for (const n of nombres) {
-        let p;
-        do { p = pinAleatorio(largo); } while (usados.has(p));
-        usados.add(p);
-        pines.set(n, p);
-      }
-
-      // Se guardan en orden alfabético para que el archivo no delate el orden del sorteo
-      const ordenados = [...nombres].sort((a, b) => a.localeCompare(b, 'es'));
-      const participantes = [];
-      for (const n of ordenados) {
-        const cifrado = await AS.cifrar(amigoDe.get(n), pines.get(n));
-        participantes.push({ nombre: n, ...cifrado });
-      }
-
-      const config = {
-        evento: $('#evento').value.trim() || 'Amigo Secreto',
-        id: idAleatorio(),
-        creado: new Date().toISOString().slice(0, 10),
-        participantes,
-      };
-
-      textoConfig = '// Generado por admin.html el ' + config.creado + '. No edites este archivo a mano.\n' +
-                    'window.AMIGO_SECRETO = ' + JSON.stringify(config, null, 2) + ';\n';
-      textoPines = ordenados.map((n) => n + ': ' + pines.get(n)).join('\n');
-
-      $('#tabla').innerHTML = '';
-      for (const n of ordenados) {
-        const tr = document.createElement('tr');
-        const td1 = document.createElement('td');
-        const td2 = document.createElement('td');
-        td1.textContent = n;
-        td2.textContent = pines.get(n);
-        td2.className = 'pin';
-        tr.append(td1, td2);
-        $('#tabla').appendChild(tr);
-      }
-      $('#config').value = textoConfig;
-      $('#ok-pines').textContent = '';
-      $('#ok-config').textContent = '';
-      $('#resultado').hidden = false;
-      $('#resultado').scrollIntoView({ behavior: 'smooth' });
-    } catch (err) {
-      error.textContent = 'No se pudo generar: ' + err.message;
-    } finally {
-      boton.disabled = false;
-      boton.textContent = 'Generar sorteo';
+    // Todo se guarda en una sola operación: el evento, las asignaciones cifradas y las huellas.
+    const lote = writeBatch(db);
+    lote.set(doc(db, 'eventos', id), { nombre: nombreEvento, creado: serverTimestamp(), participantes: ordenados });
+    for (const n of ordenados) {
+      const nonce = AS.hexAleatorio(16);
+      const { token, clave } = await AS.derivar(pines[n], AS.salt(id, n));
+      const cifrado = await AS.cifrar(JSON.stringify({ amigo: amigoDe.get(n), nonce }), clave);
+      lote.set(doc(db, 'eventos', id, 'asignaciones', token), { nombre: n, ...cifrado });
+      lote.set(doc(db, 'eventos', id, 'huellas', n), { huella: await AS.sha256hex(nonce) });
     }
-  });
+    await AS.conTiempo(lote.commit(), 20000);
 
-  async function copiar(texto, indicador) {
-    try {
-      await navigator.clipboard.writeText(texto);
-    } catch {
-      const ta = $('#config');
-      ta.value = texto; ta.select(); document.execCommand('copy'); ta.value = textoConfig;
-    }
-    indicador.textContent = '¡Copiado!';
-    setTimeout(() => (indicador.textContent = ''), 2000);
+    // Los PIN solo quedan en este navegador (nunca en la nube)
+    try { localStorage.setItem(claveLocal(id), JSON.stringify(pines)); } catch {}
+
+    location.hash = 'e=' + id;
+    mostrarEstado(id);
+  } catch (err) {
+    error.textContent = err.message === 'sin-conexion' ? AS.MENSAJE_SIN_CONEXION
+      : err.code === 'permission-denied' ? 'La base de datos rechazó la escritura. Revisa que las reglas de Firestore estén publicadas.'
+      : 'No se pudo crear: ' + err.message;
+  } finally {
+    boton.disabled = false;
+    boton.textContent = 'Crear juego';
   }
+});
 
-  $('#copiar-pines').addEventListener('click', () => copiar(textoPines, $('#ok-pines')));
-  $('#copiar-config').addEventListener('click', () => copiar(textoConfig, $('#ok-config')));
+// ============ Modo estado ============
+let detener = null;
 
-  $('#descargar').addEventListener('click', () => {
-    const blob = new Blob([textoConfig], { type: 'text/javascript' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'config.js';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+async function mostrarEstado(id) {
+  if (detener) detener();
+  $('#crear').hidden = true;
+  $('#estado').hidden = false;
+
+  let snap;
+  try {
+    snap = await AS.conTiempo(getDoc(doc(db, 'eventos', id)), 15000);
+  } catch (err) {
+    $('#estado').innerHTML = '<h1>🎁 Organizador</h1><p>' + AS.MENSAJE_SIN_CONEXION + '</p>';
+    return;
+  }
+  if (!snap.exists()) {
+    $('#estado').innerHTML = '<h1>🎁 Organizador</h1><p>No existe ningún juego con este enlace. <a href="admin.html">Crear uno nuevo</a>.</p>';
+    return;
+  }
+  const evento = snap.data();
+  const participantes = ordenar(evento.participantes);
+  $('#titulo-evento').textContent = evento.nombre;
+
+  const enlaceJuego = AS.urlBase() + '#e=' + id;
+  const enlaceAdmin = AS.urlBase() + 'admin.html#e=' + id;
+  $('#enlace-juego').textContent = enlaceJuego;
+  $('#enlace-admin').textContent = enlaceAdmin;
+  $('#copiar-juego').onclick = () => copiar(enlaceJuego, $('#copiar-juego'));
+  $('#copiar-admin').onclick = () => copiar(enlaceAdmin, $('#copiar-admin'));
+
+  // PIN (solo si se crearon en este navegador)
+  let pines = null;
+  try { pines = JSON.parse(localStorage.getItem(claveLocal(id))); } catch {}
+  const cuerpoPines = $('#tabla-pines tbody');
+  cuerpoPines.innerHTML = '';
+  if (pines) {
+    for (const n of participantes) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td></td><td class="pin"></td>';
+      tr.children[0].textContent = n;
+      tr.children[1].textContent = pines[n] || '—';
+      cuerpoPines.appendChild(tr);
+    }
+    const texto = participantes.map((n) => n + ': ' + pines[n]).join('\n');
+    $('#copiar-pines').onclick = () => copiar(texto, $('#copiar-pines'));
+  }
+  $('#sin-pines').hidden = !!pines;
+  $('#tabla-pines').hidden = !pines;
+  $('#copiar-pines').hidden = !pines;
+
+  // Estado en vivo
+  const cuerpoEstado = $('#tabla-estado tbody');
+  detener = onSnapshot(collection(db, 'eventos', id, 'estado'), (res) => {
+    const giros = {};
+    res.forEach((d) => { giros[d.id] = d.data(); });
+    cuerpoEstado.innerHTML = '';
+    let listos = 0;
+    for (const n of participantes) {
+      const g = giros[n];
+      if (g) listos++;
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td></td><td></td><td class="fecha"></td>';
+      tr.children[0].textContent = n;
+      tr.children[1].textContent = g ? '✅ Ya giró' : '⏳ Pendiente';
+      tr.children[1].className = g ? 'listo' : 'pendiente';
+      tr.children[2].textContent = g && g.fecha ? g.fecha.toDate().toLocaleString('es') : '';
+      cuerpoEstado.appendChild(tr);
+    }
+    $('#progreso').textContent = listos + ' de ' + participantes.length + ' ya giraron' + (listos === participantes.length ? ' 🎉' : '');
   });
-})();
+}
+
+async function copiar(texto, boton) {
+  try { await navigator.clipboard.writeText(texto); } catch {
+    const ta = document.createElement('textarea');
+    ta.value = texto; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  }
+  const original = boton.textContent;
+  boton.textContent = '¡Copiado!';
+  setTimeout(() => (boton.textContent = original), 2000);
+}
+
+// ============ Arranque ============
+const id = new URLSearchParams(location.hash.slice(1)).get('e');
+if (id) mostrarEstado(id);
+window.addEventListener('hashchange', () => {
+  const nuevo = new URLSearchParams(location.hash.slice(1)).get('e');
+  if (nuevo) mostrarEstado(nuevo); else location.reload();
+});
 </script>
 </body>
 </html>
