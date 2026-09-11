@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amigo Secreto · Organizador</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --fondo: #0f172a; --texto: #f8fafc; --suave: #cbd5e1; --acento: #ffd166;
+    --rosa: #ef476f; --naranja: #f78c6b; --tarjeta: rgba(255,255,255,0.08); --borde: rgba(255,255,255,0.16);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: 'Fredoka', system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--texto);
+    background: radial-gradient(circle at 50% -10%, #3b2f8f 0%, #1e1b4b 35%, var(--fondo) 75%);
+    background-attachment: fixed;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 28px 16px 60px; }
+  h1 { font-size: 1.8rem; margin: 0 0 6px; }
+  h2 { font-size: 1.2rem; margin: 30px 0 10px; color: var(--acento); }
+  p { line-height: 1.5; color: var(--suave); }
+  code { background: rgba(0,0,0,.3); padding: 2px 6px; border-radius: 6px; color: var(--acento); }
+  label { display: block; font-weight: 600; margin: 16px 0 6px; }
+  input, textarea, select {
+    font: inherit; width: 100%; padding: 10px 12px; border-radius: 12px; color: var(--texto);
+    border: 1.5px solid var(--borde); background: rgba(0,0,0,.25); outline: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--acento); }
+  textarea { resize: vertical; min-height: 160px; font-family: ui-monospace, Consolas, monospace; font-size: .95rem; }
+  select option { color: #111; }
+  .fila { display: flex; gap: 16px; align-items: end; flex-wrap: wrap; }
+  .fila > div { flex: 1 1 180px; }
+  .contador { font-size: .9rem; color: var(--suave); margin-top: 6px; }
+  .boton {
+    font: inherit; font-size: 1.05rem; font-weight: 700; cursor: pointer; border: none; color: #fff;
+    padding: 12px 26px; border-radius: 999px; background: linear-gradient(135deg, var(--rosa), var(--naranja));
+    box-shadow: 0 8px 24px rgba(239,71,111,.35); margin-top: 18px;
+  }
+  .boton:disabled { opacity: .55; cursor: default; }
+  .boton.secundario { background: transparent; border: 1.5px solid var(--borde); box-shadow: none; color: var(--suave); font-size: .95rem; padding: 8px 16px; margin: 8px 8px 0 0; }
+  .error { color: #fda4af; min-height: 1.4em; }
+  table { width: 100%; border-collapse: collapse; background: var(--tarjeta); border-radius: 14px; overflow: hidden; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--borde); }
+  th { color: var(--acento); font-weight: 600; }
+  td.pin { font-family: ui-monospace, Consolas, monospace; font-size: 1.15rem; letter-spacing: 3px; }
+  .aviso { background: rgba(255,209,102,.12); border: 1.5px solid rgba(255,209,102,.4); border-radius: 12px; padding: 12px 14px; }
+  .ok { color: #86efac; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🎁 Amigo Secreto · Organizador</h1>
+  <p>Escribe los nombres, genera el sorteo y sube el archivo <code>config.js</code> al repositorio.
+     El sorteo se hace aquí, en tu navegador, y queda cifrado con el PIN de cada persona:
+     ni siquiera tú verás quién le tocó a quién. 🤫</p>
+
+  <form id="form">
+    <label for="evento">Nombre del evento</label>
+    <input id="evento" value="Amigo Secreto 2026">
+
+    <label for="nombres">Participantes (uno por línea)</label>
+    <textarea id="nombres" placeholder="Ana&#10;Carlos&#10;Daniela&#10;…"></textarea>
+    <div class="contador" id="contador">0 participantes</div>
+
+    <div class="fila">
+      <div>
+        <label for="largo">Largo del PIN</label>
+        <select id="largo">
+          <option value="4">4 dígitos</option>
+          <option value="6" selected>6 dígitos</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="boton" type="submit" id="generar">Generar sorteo</button>
+    <p class="error" id="error"></p>
+  </form>
+
+  <section id="resultado" hidden>
+    <h2>1. Envía a cada persona su PIN (en privado)</h2>
+    <table>
+      <thead><tr><th>Nombre</th><th>PIN</th></tr></thead>
+      <tbody id="tabla"></tbody>
+    </table>
+    <button class="boton secundario" type="button" id="copiar-pines">Copiar lista de PIN</button>
+    <span class="ok" id="ok-pines"></span>
+
+    <h2>2. Reemplaza <code>config.js</code> en el repositorio</h2>
+    <p>Descarga el archivo (o copia el contenido), reemplaza el <code>config.js</code> del repositorio
+       y sube los cambios. En un minuto la página publicada ya tendrá el nuevo sorteo.</p>
+    <textarea id="config" readonly rows="10"></textarea>
+    <button class="boton secundario" type="button" id="descargar">Descargar config.js</button>
+    <button class="boton secundario" type="button" id="copiar-config">Copiar contenido</button>
+    <span class="ok" id="ok-config"></span>
+
+    <p class="aviso">⚠️ Si vuelves a generar, cambian las asignaciones y los PIN. Hazlo solo antes de repartirlos.</p>
+  </section>
+</main>
+
+<script src="common.js"></script>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  let textoConfig = '';
+  let textoPines = '';
+
+  function leerNombres() {
+    return $('#nombres').value.split('\n').map((n) => n.trim()).filter(Boolean);
+  }
+
+  $('#nombres').addEventListener('input', () => {
+    const n = leerNombres().length;
+    $('#contador').textContent = n + (n === 1 ? ' participante' : ' participantes');
+  });
+
+  function pinAleatorio(largo) {
+    let p = '';
+    for (let i = 0; i < largo; i++) p += AS.aleatorio(10);
+    return p;
+  }
+
+  function idAleatorio() {
+    const letras = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let id = '';
+    for (let i = 0; i < 8; i++) id += letras[AS.aleatorio(letras.length)];
+    return id;
+  }
+
+  // Sorteo: mezcla los nombres y forma un ciclo (cada uno regala al siguiente).
+  // Así nadie se regala a sí mismo y todos reciben exactamente un regalo.
+  function sortear(nombres) {
+    const orden = [...nombres];
+    for (let i = orden.length - 1; i > 0; i--) {
+      const j = AS.aleatorio(i + 1);
+      [orden[i], orden[j]] = [orden[j], orden[i]];
+    }
+    const amigoDe = new Map();
+    orden.forEach((n, i) => amigoDe.set(n, orden[(i + 1) % orden.length]));
+    return amigoDe;
+  }
+
+  $('#form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const error = $('#error');
+    error.textContent = '';
+
+    const nombres = leerNombres();
+    const repetidos = nombres.filter((n, i) => nombres.findIndex((m) => m.toLowerCase() === n.toLowerCase()) !== i);
+    if (nombres.length < 3) { error.textContent = 'Necesitas al menos 3 participantes.'; return; }
+    if (repetidos.length) { error.textContent = 'Hay nombres repetidos: ' + [...new Set(repetidos)].join(', '); return; }
+    if (nombres.some((n) => n.length > 40)) { error.textContent = 'Usa nombres de máximo 40 caracteres.'; return; }
+
+    const boton = $('#generar');
+    boton.disabled = true;
+    boton.textContent = 'Generando…';
+
+    try {
+      const largo = Number($('#largo').value);
+      const amigoDe = sortear(nombres);
+
+      // PIN únicos por persona
+      const pines = new Map();
+      const usados = new Set();
+      for (const n of nombres) {
+        let p;
+        do { p = pinAleatorio(largo); } while (usados.has(p));
+        usados.add(p);
+        pines.set(n, p);
+      }
+
+      // Se guardan en orden alfabético para que el archivo no delate el orden del sorteo
+      const ordenados = [...nombres].sort((a, b) => a.localeCompare(b, 'es'));
+      const participantes = [];
+      for (const n of ordenados) {
+        const cifrado = await AS.cifrar(amigoDe.get(n), pines.get(n));
+        participantes.push({ nombre: n, ...cifrado });
+      }
+
+      const config = {
+        evento: $('#evento').value.trim() || 'Amigo Secreto',
+        id: idAleatorio(),
+        creado: new Date().toISOString().slice(0, 10),
+        participantes,
+      };
+
+      textoConfig = '// Generado por admin.html el ' + config.creado + '. No edites este archivo a mano.\n' +
+                    'window.AMIGO_SECRETO = ' + JSON.stringify(config, null, 2) + ';\n';
+      textoPines = ordenados.map((n) => n + ': ' + pines.get(n)).join('\n');
+
+      $('#tabla').innerHTML = '';
+      for (const n of ordenados) {
+        const tr = document.createElement('tr');
+        const td1 = document.createElement('td');
+        const td2 = document.createElement('td');
+        td1.textContent = n;
+        td2.textContent = pines.get(n);
+        td2.className = 'pin';
+        tr.append(td1, td2);
+        $('#tabla').appendChild(tr);
+      }
+      $('#config').value = textoConfig;
+      $('#ok-pines').textContent = '';
+      $('#ok-config').textContent = '';
+      $('#resultado').hidden = false;
+      $('#resultado').scrollIntoView({ behavior: 'smooth' });
+    } catch (err) {
+      error.textContent = 'No se pudo generar: ' + err.message;
+    } finally {
+      boton.disabled = false;
+      boton.textContent = 'Generar sorteo';
+    }
+  });
+
+  async function copiar(texto, indicador) {
+    try {
+      await navigator.clipboard.writeText(texto);
+    } catch {
+      const ta = $('#config');
+      ta.value = texto; ta.select(); document.execCommand('copy'); ta.value = textoConfig;
+    }
+    indicador.textContent = '¡Copiado!';
+    setTimeout(() => (indicador.textContent = ''), 2000);
+  }
+
+  $('#copiar-pines').addEventListener('click', () => copiar(textoPines, $('#ok-pines')));
+  $('#copiar-config').addEventListener('click', () => copiar(textoConfig, $('#ok-config')));
+
+  $('#descargar').addEventListener('click', () => {
+    const blob = new Blob([textoConfig], { type: 'text/javascript' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'config.js';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+})();
+</script>
+</body>
+</html>

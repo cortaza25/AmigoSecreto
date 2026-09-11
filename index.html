@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amigo Secreto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --fondo: #0f172a;
+    --texto: #f8fafc;
+    --suave: #cbd5e1;
+    --acento: #ffd166;
+    --rosa: #ef476f;
+    --naranja: #f78c6b;
+    --tarjeta: rgba(255, 255, 255, 0.08);
+    --borde: rgba(255, 255, 255, 0.16);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: 'Fredoka', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    color: var(--texto);
+    background: radial-gradient(circle at 50% -10%, #3b2f8f 0%, #1e1b4b 35%, var(--fondo) 75%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 480px; margin: 0 auto; padding: 28px 16px 48px; }
+  h1 { font-size: 2rem; margin: 0 0 4px; text-align: center; letter-spacing: 0.5px; }
+  .evento { text-align: center; color: var(--acento); margin: 0 0 28px; font-weight: 600; }
+  .pregunta { text-align: center; color: var(--suave); margin: 0 0 12px; font-size: 1.05rem; }
+
+  /* ---- Chips de nombres ---- */
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 24px; }
+  .chip {
+    font: inherit; font-size: 1rem; font-weight: 600;
+    padding: 10px 18px; border-radius: 999px; cursor: pointer;
+    color: var(--texto); background: var(--tarjeta); border: 1.5px solid var(--borde);
+    transition: transform .12s ease, background .12s ease, color .12s ease;
+  }
+  .chip:hover { transform: translateY(-2px); background: rgba(255,255,255,0.14); }
+  .chip.activo { background: var(--acento); color: #1e1b4b; border-color: var(--acento); }
+
+  /* ---- Formulario PIN ---- */
+  form { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  label { color: var(--suave); font-size: .95rem; }
+  input#pin {
+    font: inherit; font-size: 1.8rem; letter-spacing: 12px; text-align: center; width: 200px;
+    padding: 10px 0 10px 12px; border-radius: 14px; border: 2px solid var(--borde);
+    background: rgba(0,0,0,0.25); color: var(--texto); outline: none;
+  }
+  input#pin:focus { border-color: var(--acento); }
+  .sacudir { animation: sacudir .4s ease; }
+  @keyframes sacudir { 20%,60% { transform: translateX(-8px); } 40%,80% { transform: translateX(8px); } }
+  .error { color: #fda4af; min-height: 1.4em; margin: 0; font-size: .95rem; }
+
+  /* ---- Botones ---- */
+  .boton {
+    font: inherit; font-size: 1.2rem; font-weight: 700; cursor: pointer; border: none;
+    padding: 14px 32px; border-radius: 999px; color: #fff;
+    background: linear-gradient(135deg, var(--rosa), var(--naranja));
+    box-shadow: 0 8px 24px rgba(239, 71, 111, 0.35);
+    transition: transform .12s ease, box-shadow .12s ease, opacity .2s;
+  }
+  .boton:hover:not(:disabled) { transform: translateY(-2px) scale(1.02); box-shadow: 0 12px 28px rgba(239,71,111,.45); }
+  .boton:disabled { opacity: .55; cursor: default; }
+  .boton.secundario {
+    background: transparent; color: var(--suave); box-shadow: none;
+    border: 1.5px solid var(--borde); font-size: .95rem; padding: 8px 16px; font-weight: 600;
+  }
+
+  /* ---- Pantalla de la ruleta ---- */
+  .cabecera { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+  .cabecera span { font-size: 1.25rem; font-weight: 600; }
+  .ruleta-contenedor { position: relative; width: min(88vw, 400px); margin: 0 auto 26px; }
+  .puntero {
+    position: absolute; top: -14px; left: 50%; transform: translateX(-50%); z-index: 3;
+    width: 0; height: 0; border-left: 16px solid transparent; border-right: 16px solid transparent;
+    border-top: 34px solid var(--acento); filter: drop-shadow(0 3px 4px rgba(0,0,0,.4));
+  }
+  canvas#ruleta {
+    display: block; width: 100%; aspect-ratio: 1; border-radius: 50%;
+    box-shadow: 0 0 0 8px rgba(255,255,255,0.06), 0 18px 50px rgba(0,0,0,.5);
+    will-change: transform;
+  }
+  .centro {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2;
+    width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center;
+    font-size: 30px; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.35);
+  }
+  .acciones { text-align: center; }
+
+  /* ---- Tarjeta de resultado ---- */
+  .tarjeta {
+    margin-top: 22px; padding: 22px 20px; border-radius: 20px; text-align: center;
+    background: #fff; color: #1e1b4b; box-shadow: 0 16px 40px rgba(0,0,0,.4);
+    animation: aparecer .5s cubic-bezier(.2,.9,.3,1.3);
+  }
+  @keyframes aparecer { from { opacity: 0; transform: scale(.85) translateY(10px); } }
+  .tarjeta p { margin: 0; }
+  .tarjeta .titulo { text-transform: uppercase; letter-spacing: 2px; font-size: .8rem; color: #64748b; }
+  .tarjeta .amigo { font-size: 2.2rem; font-weight: 700; color: var(--rosa); margin: 6px 0 10px; word-break: break-word; }
+  .tarjeta .nota { color: #475569; font-size: .95rem; }
+
+  .aviso { text-align: center; color: var(--suave); line-height: 1.5; }
+  .aviso a { color: var(--acento); }
+
+  canvas#confeti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main id="app">
+
+  <!-- Pantalla 1: elegir nombre + PIN -->
+  <section id="pantalla-entrar">
+    <h1>🎁 Amigo Secreto</h1>
+    <p class="evento" id="nombre-evento"></p>
+    <p class="pregunta">¿Quién eres?</p>
+    <div id="lista-nombres" class="chips"></div>
+    <form id="form-pin" hidden autocomplete="off">
+      <label for="pin">Escribe tu PIN</label>
+      <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="8" required>
+      <p class="error" id="error"></p>
+      <button class="boton" type="submit">Entrar</button>
+    </form>
+    <p class="aviso" id="sin-config" hidden>
+      El organizador todavía no ha generado el sorteo.<br>
+      Si eres tú, ábrelo desde <a href="admin.html">admin.html</a>.
+    </p>
+  </section>
+
+  <!-- Pantalla 2: ruleta -->
+  <section id="pantalla-ruleta" hidden>
+    <div class="cabecera">
+      <span id="saludo"></span>
+      <button class="boton secundario" id="salir" type="button">Salir</button>
+    </div>
+    <div class="ruleta-contenedor">
+      <div class="puntero"></div>
+      <canvas id="ruleta"></canvas>
+      <div class="centro">🎁</div>
+    </div>
+    <div class="acciones">
+      <button class="boton" id="girar" type="button">¡Girar la ruleta!</button>
+    </div>
+    <div class="tarjeta" id="resultado" hidden>
+      <p class="titulo">Tu amigo secreto es</p>
+      <p class="amigo" id="amigo"></p>
+      <p class="nota" id="nota"></p>
+    </div>
+  </section>
+
+</main>
+<canvas id="confeti" hidden></canvas>
+
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script>
+(() => {
+  const cfg = window.AMIGO_SECRETO;
+  const $ = (s) => document.querySelector(s);
+  const COLORES = ['#ef476f', '#ffd166', '#06d6a0', '#118ab2', '#f78c6b', '#9b5de5', '#00bbf9', '#f15bb5'];
+  const DOS_PI = Math.PI * 2;
+
+  let yo = null;      // participante seleccionado (entrada de config.js)
+  let amigo = null;   // nombre descifrado con el PIN
+  let otros = [];     // nombres en la ruleta (todos menos yo)
+  let rotacion = 0;   // rotación actual de la ruleta, en radianes
+  let girando = false;
+
+  const claveLocal = () => 'amigo-secreto:' + cfg.id + ':' + yo.nombre;
+  const ordenar = (lista) => [...lista].sort((a, b) => a.localeCompare(b, 'es'));
+
+  // ============ Pantalla de entrada ============
+  function iniciar() {
+    if (!cfg || !Array.isArray(cfg.participantes) || cfg.participantes.length < 2) {
+      $('#sin-config').hidden = false;
+      $('#lista-nombres').hidden = true;
+      $('.pregunta').hidden = true;
+      return;
+    }
+    $('#nombre-evento').textContent = cfg.evento || '';
+    const lista = $('#lista-nombres');
+    for (const nombre of ordenar(cfg.participantes.map((p) => p.nombre))) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip';
+      chip.textContent = nombre;
+      chip.addEventListener('click', () => seleccionar(nombre, chip));
+      lista.appendChild(chip);
+    }
+  }
+
+  function seleccionar(nombre, chip) {
+    yo = cfg.participantes.find((p) => p.nombre === nombre);
+    document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('activo', c === chip));
+    $('#form-pin').hidden = false;
+    $('#error').textContent = '';
+    $('#pin').value = '';
+    $('#pin').focus();
+  }
+
+  $('#form-pin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pin = $('#pin').value.trim();
+    if (!yo || !pin) return;
+    const boton = e.target.querySelector('button');
+    boton.disabled = true;
+    boton.textContent = 'Verificando…';
+    try {
+      amigo = await AS.descifrar(yo, pin);
+      entrar();
+    } catch {
+      $('#error').textContent = 'PIN incorrecto. Inténtalo de nuevo.';
+      const input = $('#pin');
+      input.classList.remove('sacudir'); void input.offsetWidth; input.classList.add('sacudir');
+      input.select();
+    } finally {
+      boton.disabled = false;
+      boton.textContent = 'Entrar';
+    }
+  });
+
+  // ============ Pantalla de la ruleta ============
+  function entrar() {
+    otros = ordenar(cfg.participantes.map((p) => p.nombre).filter((n) => n !== yo.nombre));
+    if (!otros.includes(amigo)) {
+      $('#error').textContent = 'El sorteo parece dañado: vuelve a generar config.js.';
+      return;
+    }
+    $('#saludo').textContent = 'Hola, ' + yo.nombre + ' 👋';
+    $('#pantalla-entrar').hidden = true;
+    $('#pantalla-ruleta').hidden = false;
+
+    let yaGiro = false;
+    try { yaGiro = !!localStorage.getItem(claveLocal()); } catch {}
+
+    if (yaGiro) {
+      // Ya giró antes: la ruleta aparece quieta apuntando a su amigo, sin botón de girar.
+      rotacion = anguloFinal(otros.indexOf(amigo), 0, 0);
+      dibujarRuleta();
+      mostrarResultado('Ya giraste anteriormente, así que la ruleta no se puede volver a girar. ¡Guarda el secreto! 🤫');
+    } else {
+      rotacion = 0;
+      dibujarRuleta();
+      $('#girar').hidden = false;
+      $('#girar').disabled = false;
+      $('#resultado').hidden = true;
+    }
+  }
+
+  $('#salir').addEventListener('click', () => {
+    yo = amigo = null;
+    otros = [];
+    $('#pantalla-ruleta').hidden = true;
+    $('#pantalla-entrar').hidden = false;
+    $('#form-pin').hidden = true;
+    document.querySelectorAll('.chip').forEach((c) => c.classList.remove('activo'));
+  });
+
+  $('#girar').addEventListener('click', girar);
+
+  // ---- Dibujo de la ruleta ----
+  const lienzo = $('#ruleta');
+
+  function dibujarRuleta() {
+    const tam = lienzo.clientWidth;
+    if (!tam) return;
+    const dpr = window.devicePixelRatio || 1;
+    lienzo.width = tam * dpr;
+    lienzo.height = tam * dpr;
+    const ctx = lienzo.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const r = tam / 2;
+    const n = otros.length;
+    const seg = DOS_PI / n;
+    const fuenteMax = Math.max(10, Math.min(22, 0.5 * r * seg));
+    const anchoTexto = r - 18 - 44; // desde el borde hasta el botón central
+
+    otros.forEach((nombre, i) => {
+      const ini = i * seg;
+      // Evita que el último y el primero queden del mismo color al cerrar el círculo
+      let color = COLORES[i % COLORES.length];
+      if (i === n - 1 && n > 1 && color === COLORES[0]) color = COLORES[1];
+
+      ctx.beginPath();
+      ctx.moveTo(r, r);
+      ctx.arc(r, r, r - 4, ini, ini + seg);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Nombre escrito a lo largo del radio
+      ctx.save();
+      ctx.translate(r, r);
+      ctx.rotate(ini + seg / 2);
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#1e1b4b';
+      ctx.fillText(ajustar(ctx, nombre, anchoTexto, fuenteMax), r - 18, 0);
+      ctx.restore();
+    });
+
+    ctx.beginPath();
+    ctx.arc(r, r, r - 3, 0, DOS_PI);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+
+    aplicarRotacion();
+  }
+
+  // Reduce la fuente hasta que el nombre quepa (mínimo 11px) y, si aun así no cabe, lo recorta.
+  function ajustar(ctx, texto, ancho, fuenteMax) {
+    for (let f = fuenteMax; f >= 11; f -= 1) {
+      ctx.font = '600 ' + f + 'px Fredoka, system-ui, sans-serif';
+      if (ctx.measureText(texto).width <= ancho) return texto;
+    }
+    let t = texto;
+    while (t.length > 1 && ctx.measureText(t + '…').width > ancho) t = t.slice(0, -1);
+    return t + '…';
+  }
+
+  function aplicarRotacion() {
+    lienzo.style.transform = 'rotate(' + rotacion + 'rad)';
+  }
+
+  window.addEventListener('resize', () => { if (!$('#pantalla-ruleta').hidden && !girando) dibujarRuleta(); });
+
+  // Rotación necesaria para que el segmento `indice` quede bajo el puntero (arriba, -π/2).
+  function anguloFinal(indice, vueltas, desvio) {
+    const seg = DOS_PI / otros.length;
+    const objetivo = -Math.PI / 2 - (indice + 0.5) * seg + desvio;
+    const base = ((objetivo % DOS_PI) + DOS_PI) % DOS_PI;
+    return vueltas * DOS_PI + base;
+  }
+
+  function segmentoBajoPuntero() {
+    const seg = DOS_PI / otros.length;
+    const local = (((-Math.PI / 2 - rotacion) % DOS_PI) + DOS_PI) % DOS_PI;
+    return Math.floor(local / seg);
+  }
+
+  // ---- Giro ----
+  function girar() {
+    if (girando) return;
+    girando = true;
+    $('#girar').disabled = true;
+    $('#girar').textContent = 'Girando…';
+
+    const seg = DOS_PI / otros.length;
+    const desvio = (Math.random() - 0.5) * seg * 0.7;       // no cae siempre en el centro exacto
+    const vueltas = 6 + AS.aleatorio(3);
+    const inicio = rotacion % DOS_PI;
+    const destino = anguloFinal(otros.indexOf(amigo), vueltas, desvio);
+    const duracion = 5500;
+    const t0 = performance.now();
+    let ultimoSeg = segmentoBajoPuntero();
+    let ultimoTic = 0;
+
+    function paso(ahora) {
+      const t = Math.min(1, (ahora - t0) / duracion);
+      const e = 1 - Math.pow(1 - t, 4); // frena suave al final
+      rotacion = inicio + (destino - inicio) * e;
+      aplicarRotacion();
+
+      const s = segmentoBajoPuntero();
+      if (s !== ultimoSeg && ahora - ultimoTic > 40) { ultimoSeg = s; ultimoTic = ahora; tic(); }
+
+      if (t < 1) requestAnimationFrame(paso);
+      else terminarGiro();
+    }
+    requestAnimationFrame(paso);
+  }
+
+  function terminarGiro() {
+    girando = false;
+    try { localStorage.setItem(claveLocal(), JSON.stringify({ fecha: new Date().toISOString() })); } catch {}
+    tada();
+    confeti();
+    mostrarResultado('La ruleta ya no se puede volver a girar. ¡Guarda el secreto! 🤫');
+  }
+
+  function mostrarResultado(nota) {
+    $('#girar').hidden = true;
+    $('#girar').textContent = '¡Girar la ruleta!';
+    $('#amigo').textContent = amigo;
+    $('#nota').textContent = nota;
+    $('#resultado').hidden = false;
+  }
+
+  // ---- Sonidos (Web Audio; si falla, se ignora) ----
+  let audio;
+  function contexto() {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    return audio;
+  }
+  function nota(freq, inicio, dur, tipo, vol) {
+    const a = contexto();
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = tipo || 'square';
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(vol || 0.03, a.currentTime + inicio);
+    g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + inicio + dur);
+    o.connect(g).connect(a.destination);
+    o.start(a.currentTime + inicio);
+    o.stop(a.currentTime + inicio + dur);
+  }
+  function tic() { try { nota(900, 0, 0.05); } catch {} }
+  function tada() {
+    try { [523, 659, 784, 1047].forEach((f, i) => nota(f, i * 0.12, 0.5, 'triangle', 0.08)); } catch {}
+  }
+
+  // ---- Confeti ----
+  function confeti() {
+    const c = $('#confeti');
+    const ctx = c.getContext('2d');
+    c.width = innerWidth;
+    c.height = innerHeight;
+    c.hidden = false;
+    const piezas = Array.from({ length: 160 }, () => ({
+      x: Math.random() * c.width,
+      y: -20 - Math.random() * c.height * 0.4,
+      vx: (Math.random() - 0.5) * 3,
+      vy: 2 + Math.random() * 4,
+      w: 6 + Math.random() * 6,
+      h: 8 + Math.random() * 8,
+      rot: Math.random() * Math.PI,
+      vr: (Math.random() - 0.5) * 0.25,
+      color: COLORES[Math.floor(Math.random() * COLORES.length)],
+    }));
+    const t0 = performance.now();
+    (function paso(ahora) {
+      ctx.clearRect(0, 0, c.width, c.height);
+      let vivos = 0;
+      for (const p of piezas) {
+        p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.vy += 0.03;
+        if (p.y < c.height + 20) vivos++;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      }
+      if (vivos > 0 && ahora - t0 < 7000) requestAnimationFrame(paso);
+      else { ctx.clearRect(0, 0, c.width, c.height); c.hidden = true; }
+    })(t0);
+  }
+
+  iniciar();
+})();
+</script>
+</body>
+</html>
